@@ -1,0 +1,2645 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Concert Tracker</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0c10;
+    --bg2: #111318;
+    --bg3: #181b22;
+    --bg4: #1e222b;
+    --border: rgba(255,255,255,0.07);
+    --border2: rgba(255,255,255,0.12);
+    --text: #e8eaf0;
+    --muted: #7a7f8e;
+    --accent: #7c6af7;
+    --accent2: #a78bfa;
+    --accent-dim: rgba(124,106,247,0.15);
+    --green: #34d399;
+    --green-dim: rgba(52,211,153,0.12);
+    --amber: #fbbf24;
+    --amber-dim: rgba(251,191,36,0.12);
+    --coral: #f87171;
+    --coral-dim: rgba(248,113,113,0.12);
+    --blue: #60a5fa;
+    --blue-dim: rgba(96,165,250,0.12);
+    --font: 'Outfit', sans-serif;
+    --mono: 'DM Mono', monospace;
+    --radius: 10px;
+    --radius-lg: 16px;
+  }
+
+  body { font-family: var(--font); background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  /* Layout */
+  .app { display: grid; grid-template-rows: auto 1fr; min-height: 100vh; }
+  header { background: var(--bg2); border-bottom: 1px solid var(--border); padding: 0 2rem; display: flex; align-items: center; gap: 1.5rem; height: 56px; position: sticky; top: 0; z-index: 100; }
+  .logo { font-size: 15px; font-weight: 600; letter-spacing: 0.5px; display: flex; align-items: center; gap: 8px; }
+  .logo-dot { width: 8px; height: 8px; background: var(--accent); border-radius: 50%; }
+  nav { display: flex; gap: 2px; margin-left: 24px; }
+  .nav-btn { background: none; border: none; color: var(--muted); font-family: var(--font); font-size: 13px; font-weight: 500; padding: 5px 12px; border-radius: 6px; cursor: pointer; transition: all 0.15s; }
+  .nav-btn:hover { color: var(--text); background: var(--bg3); }
+  .nav-btn.active { color: var(--accent2); background: var(--accent-dim); }
+  .header-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+  .badge { font-size: 11px; font-family: var(--mono); background: var(--accent-dim); color: var(--accent2); border: 1px solid rgba(124,106,247,0.25); border-radius: 99px; padding: 2px 10px; }
+
+  .main { display: grid; grid-template-columns: 280px 1fr; overflow: hidden; height: calc(100vh - 56px); }
+
+  /* Sidebar */
+  .sidebar { background: var(--bg2); border-right: 1px solid var(--border); overflow-y: auto; padding: 1.25rem; display: flex; flex-direction: column; gap: 1rem; }
+  .sidebar-section { }
+  .sidebar-label { font-size: 10px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+  .input-group { display: flex; flex-direction: column; gap: 6px; }
+  .input-group label { font-size: 12px; color: var(--muted); }
+  .inp { background: var(--bg3); border: 1px solid var(--border2); border-radius: var(--radius); color: var(--text); font-family: var(--font); font-size: 13px; padding: 8px 12px; width: 100%; outline: none; transition: border-color 0.15s; }
+  .inp:focus { border-color: var(--accent); }
+  .inp::placeholder { color: var(--muted); }
+  .btn { background: var(--accent); color: #fff; border: none; border-radius: var(--radius); font-family: var(--font); font-size: 13px; font-weight: 600; padding: 9px 16px; cursor: pointer; transition: all 0.15s; width: 100%; }
+  .btn:hover { background: var(--accent2); }
+  .btn:active { transform: scale(0.98); }
+  .btn-ghost { background: var(--bg3); color: var(--text); border: 1px solid var(--border2); }
+  .btn-ghost:hover { background: var(--bg4); border-color: var(--border2); }
+  .status { font-size: 11px; font-family: var(--mono); padding: 6px 10px; border-radius: 6px; display: none; }
+  .status.ok { display: block; background: var(--green-dim); color: var(--green); border: 1px solid rgba(52,211,153,0.2); }
+  .status.err { display: block; background: var(--coral-dim); color: var(--coral); border: 1px solid rgba(248,113,113,0.2); }
+  .status.loading { display: block; background: var(--blue-dim); color: var(--blue); border: 1px solid rgba(96,165,250,0.2); }
+  .divider { height: 1px; background: var(--border); margin: 4px 0; }
+
+  /* Content */
+  .content { overflow-y: auto; padding: 1.5rem; }
+  .view { display: none; }
+  .view.active { display: block; }
+
+  /* Setup screen */
+  .setup-center { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 60vh; gap: 1rem; text-align: center; }
+  .setup-icon { font-size: 48px; }
+  .setup-title { font-size: 24px; font-weight: 600; }
+  .setup-sub { color: var(--muted); font-size: 14px; max-width: 380px; line-height: 1.6; }
+
+  /* Stats grid */
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 1.5rem; }
+  .stat-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1rem 1.25rem; }
+  .stat-label { font-size: 11px; color: var(--muted); letter-spacing: 0.5px; margin-bottom: 6px; }
+  .stat-value { font-size: 28px; font-weight: 700; font-family: var(--mono); color: var(--accent2); }
+  .stat-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  /* Map */
+  #map-container { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-lg); height: 460px; position: relative; overflow: hidden; margin-bottom: 1.5rem; }
+  #world-map { width: 100%; height: 100%; }
+  .map-dot { cursor: pointer; transition: r 0.15s; }
+  .map-dot:hover { r: 8; }
+  .map-tooltip { position: absolute; background: var(--bg); border: 1px solid var(--border2); border-radius: 8px; padding: 8px 12px; font-size: 12px; pointer-events: none; display: none; z-index: 10; max-width: 200px; }
+  .map-tooltip strong { display: block; color: var(--text); font-size: 13px; }
+  .map-tooltip span { color: var(--muted); }
+
+  /* Leaderboard / table */
+  .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .section-title { font-size: 14px; font-weight: 600; }
+  .section-count { font-size: 12px; color: var(--muted); font-family: var(--mono); }
+  .search-inp { background: var(--bg3); border: 1px solid var(--border2); border-radius: 8px; color: var(--text); font-family: var(--font); font-size: 12px; padding: 5px 10px; outline: none; width: 180px; }
+  .search-inp:focus { border-color: var(--accent); }
+
+  .lb-table { width: 100%; border-collapse: collapse; }
+  .lb-table th { text-align: left; font-size: 11px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; color: var(--muted); padding: 6px 12px; border-bottom: 1px solid var(--border); }
+  .lb-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 13px; vertical-align: middle; }
+  .lb-table tr:last-child td { border-bottom: none; }
+  .lb-table tr:hover td { background: var(--bg3); }
+  .lb-table tr { cursor: pointer; transition: background 0.1s; }
+  .rank { font-family: var(--mono); font-size: 12px; color: var(--muted); width: 32px; }
+  .rank-1 { color: var(--amber); }
+  .rank-2 { color: #c0c0c0; }
+  .rank-3 { color: #cd7f32; }
+  .bar-wrap { display: flex; align-items: center; gap: 8px; }
+  .bar { height: 4px; background: var(--accent-dim); border-radius: 99px; flex: 1; overflow: hidden; }
+  .bar-fill { height: 100%; background: var(--accent); border-radius: 99px; transition: width 0.5s ease; }
+  .count-badge { font-family: var(--mono); font-size: 12px; background: var(--bg3); border: 1px solid var(--border); border-radius: 6px; padding: 2px 8px; min-width: 28px; text-align: center; }
+
+  .panel { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; margin-bottom: 1.5rem; }
+  .panel-header { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+
+  /* Concert list */
+  .concert-list { display: flex; flex-direction: column; gap: 2px; }
+  .concert-item { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 16px; cursor: pointer; transition: all 0.15s; display: grid; grid-template-columns: 80px 1fr auto; gap: 12px; align-items: center; }
+  .concert-item:hover { border-color: var(--border2); background: var(--bg3); }
+  .concert-date { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .concert-artist { font-size: 14px; font-weight: 600; }
+  .concert-venue { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .concert-tag { font-size: 11px; background: var(--accent-dim); color: var(--accent2); border-radius: 99px; padding: 2px 8px; font-weight: 500; }
+  .concert-tag.loaded { background: var(--green-dim); color: var(--green); }
+  .concert-tag.none { background: var(--bg3); color: var(--muted); }
+
+  /* Setlist modal */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 200; display: none; align-items: center; justify-content: center; }
+  .modal-overlay.open { display: flex; }
+  .modal { background: var(--bg2); border: 1px solid var(--border2); border-radius: var(--radius-lg); width: 90%; max-width: 640px; max-height: 85vh; overflow: hidden; display: flex; flex-direction: column; }
+  .modal-head { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  .modal-title { font-size: 16px; font-weight: 600; }
+  .modal-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .modal-close { background: var(--bg3); border: 1px solid var(--border); border-radius: 6px; color: var(--muted); font-size: 16px; width: 28px; height: 28px; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .modal-body { overflow-y: auto; padding: 16px 20px; flex: 1; }
+  .setlist-section { margin-bottom: 16px; }
+  .setlist-section-title { font-size: 11px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+  .song-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .song-row:last-child { border-bottom: none; }
+  .song-num { font-family: var(--mono); font-size: 11px; color: var(--muted); width: 20px; }
+  .song-name { flex: 1; }
+  .song-cover { font-size: 11px; color: var(--muted); font-style: italic; }
+  .song-times { font-family: var(--mono); font-size: 11px; background: var(--amber-dim); color: var(--amber); border-radius: 99px; padding: 1px 7px; }
+  .opening-act { background: var(--bg3); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; font-size: 13px; display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .opening-act-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; }
+  .modal-loading { text-align: center; padding: 32px; color: var(--muted); font-size: 13px; }
+  .spinner { display: inline-block; width: 20px; height: 20px; border: 2px solid var(--border2); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 8px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Song stats */
+  .song-stats-wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  .artist-filter { background: var(--bg3); border: 1px solid var(--border); border-radius: 8px; padding: 2px; display: flex; flex-wrap: wrap; gap: 2px; margin-bottom: 12px; }
+  .af-btn { background: none; border: none; color: var(--muted); font-family: var(--font); font-size: 12px; padding: 5px 10px; border-radius: 6px; cursor: pointer; }
+  .af-btn.active { background: var(--accent-dim); color: var(--accent2); }
+  .song-stat-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+  .song-stat-row:last-child { border-bottom: none; }
+  .song-stat-name { font-size: 13px; flex: 1; }
+  .song-stat-artist { font-size: 11px; color: var(--muted); }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 2px; background: var(--bg3); border-radius: 8px; padding: 3px; margin-bottom: 1rem; width: fit-content; }
+  .tab { background: none; border: none; color: var(--muted); font-family: var(--font); font-size: 13px; padding: 5px 14px; border-radius: 6px; cursor: pointer; }
+  .tab.active { background: var(--bg2); color: var(--text); border: 1px solid var(--border2); }
+
+  .empty { text-align: center; padding: 40px; color: var(--muted); font-size: 13px; }
+
+  /* Filter bar */
+  .filter-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+  .filter-select { background: var(--bg3); border: 1px solid var(--border2); border-radius: 8px; color: var(--text); font-family: var(--font); font-size: 12px; padding: 5px 10px; outline: none; cursor: pointer; }
+
+  /* Tooltip */
+  .imp-tab { background:none;border:none;color:var(--muted);font-family:var(--font);font-size:11px;font-weight:500;padding:4px 8px;border-radius:6px;cursor:pointer;flex:1;transition:all 0.15s; }
+  .imp-tab.active { background:var(--bg2);color:var(--text);border:1px solid var(--border2); }
+  .tip { position: relative; cursor: help; }
+  .tip::after { content: attr(data-tip); position: absolute; bottom: 125%; left: 50%; transform: translateX(-50%); background: var(--bg); border: 1px solid var(--border2); border-radius: 6px; padding: 4px 8px; font-size: 11px; color: var(--muted); white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity 0.15s; z-index: 50; }
+  .tip:hover::after { opacity: 1; }
+
+  /* SVG world map base */
+  .country { fill: var(--bg3); stroke: var(--border2); stroke-width: 0.5; transition: fill 0.2s; }
+  .country.visited { fill: rgba(124,106,247,0.18); }
+
+  /* Years view layout */
+  .yr-header { margin-bottom: 1.25rem; display: flex; flex-direction: column; gap: 1rem; }
+  .yr-tab-row { display: flex; gap: 4px; flex-wrap: wrap; }
+  .yr-tab { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; color: var(--muted); font-family: var(--font); font-size: 13px; font-weight: 500; padding: 6px 18px; cursor: pointer; transition: all 0.15s; }
+  .yr-tab:hover { border-color: var(--border2); color: var(--text); }
+  .yr-tab.active { background: var(--accent-dim); border-color: rgba(124,106,247,0.35); color: var(--accent2); }
+  .yr-body { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; align-items: start; }
+  .yr-left, .yr-right { display: flex; flex-direction: column; gap: 1rem; }
+  .yr-panel { }
+  .yr-bar-month { display: flex; align-items: center; gap: 10px; padding: 5px 0; font-size: 12px; }
+  .yr-bar-month-label { width: 28px; color: var(--muted); font-family: var(--mono); font-size: 11px; }
+  .yr-bar-wrap { flex: 1; height: 16px; background: var(--bg3); border-radius: 4px; overflow: hidden; cursor: pointer; }
+  .yr-bar-inner { height: 100%; background: var(--accent); border-radius: 4px; transition: width 0.4s ease; min-width: 2px; }
+  .yr-bar-count { font-family: var(--mono); font-size: 11px; color: var(--muted); width: 20px; text-align: right; }
+  .genre-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+  .yr-empty { text-align: center; padding: 48px; color: var(--muted); font-size: 13px; grid-column: 1/-1; }
+
+  .audit-filter-btn { background:var(--bg2); border:1px solid var(--border2); border-radius:8px; color:var(--muted); font-family:var(--font); font-size:12px; font-weight:500; padding:6px 14px; cursor:pointer; transition:all 0.15s; white-space:nowrap; }
+  .audit-filter-btn:hover { border-color:var(--border2); color:var(--text); background:var(--bg3); }
+  .audit-filter-btn.active { background:var(--accent-dim); border-color:rgba(124,106,247,0.35); color:var(--accent2); }
+  .audit-filter-btn#afbtn-ok.active      { background:var(--green-dim);  border-color:rgba(52,211,153,0.3);  color:var(--green);  }
+  .audit-filter-btn#afbtn-empty.active   { background:var(--amber-dim);  border-color:rgba(251,191,36,0.3);  color:var(--amber);  }
+  .audit-filter-btn#afbtn-missing.active { background:var(--coral-dim);  border-color:rgba(248,113,113,0.3); color:var(--coral);  }
+  .audit-filter-count { display:inline-block; background:rgba(255,255,255,0.1); border-radius:99px; font-size:10px; font-family:var(--mono); padding:1px 6px; margin-left:4px; }
+  .audit-badge { display:inline-block; font-size:10px; font-weight:600; padding:2px 8px; border-radius:99px; white-space:nowrap; }
+  .audit-ok      { background:var(--green-dim);  color:var(--green);  }
+  .audit-empty   { background:var(--amber-dim);  color:var(--amber);  }
+  .audit-missing { background:var(--coral-dim);  color:var(--coral);  }
+  .audit-key     { font-family:var(--mono); font-size:10px; color:var(--muted); }
+  .audit-retry   { background:none; border:1px solid var(--border2); border-radius:6px; color:var(--accent2); font-family:var(--font); font-size:11px; padding:2px 8px; cursor:pointer; }
+  .audit-retry:hover { background:var(--accent-dim); }
+
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+
+
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 99px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="logo"><div class="logo-dot"></div> Concert Tracker</div>
+    <nav>
+      <button class="nav-btn active" onclick="switchView('map')">Map</button>
+      <button class="nav-btn" onclick="switchView('concerts')">Shows</button>
+      <button class="nav-btn" onclick="switchView('artists')">Artists</button>
+      <button class="nav-btn" onclick="switchView('venues')">Venues</button>
+      <button class="nav-btn" onclick="switchView('songs')">Songs</button>
+      <button class="nav-btn" onclick="switchView('years')">Years</button>
+      <button class="nav-btn" onclick="switchView('audit')">Audit</button>
+      <button class="nav-btn" onclick="switchView('openers')">Openers</button>
+    </nav>
+    <div class="header-right">
+      <span class="badge" id="total-badge">0 shows</span>
+    </div>
+  </header>
+
+  <div class="main">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-section">
+        <div class="sidebar-label">Google Sheets</div>
+        <div class="input-group">
+          <label style="font-size:12px;color:var(--muted)">Apps Script Web App URL</label>
+          <input class="inp" id="sheet-url" placeholder="https://script.google.com/macros/s/..." />
+          <button class="btn" onclick="loadFromScript()">Connect &amp; Load</button>
+          <button class="btn btn-ghost" id="refresh-btn" onclick="refreshFromScript()" style="display:none">↻ Refresh from Sheet</button>
+        </div>
+        <details style="margin-top:8px">
+          <summary style="font-size:11px;color:var(--accent2);cursor:pointer;user-select:none">▸ How to set this up (3 min)</summary>
+          <div style="font-size:11px;color:var(--muted);line-height:1.7;margin-top:8px;display:flex;flex-direction:column;gap:5px">
+            <div><b style="color:var(--text)">1.</b> In your sheet: <b style="color:var(--text)">Extensions → Apps Script</b></div>
+            <div><b style="color:var(--text)">2.</b> Replace all code with the script below &amp; save</div>
+            <div><b style="color:var(--text)">3.</b> Deploy → New deployment → Web app</div>
+            <div><b style="color:var(--text)">4.</b> Execute as: Me · Who has access: <b style="color:var(--text)">Anyone</b></div>
+            <div><b style="color:var(--text)">5.</b> Authorize when prompted, copy the URL</div>
+            <div style="margin-top:6px;background:var(--bg3);border-radius:6px;padding:8px;font-family:var(--mono);font-size:10px;color:var(--green);line-height:1.8;white-space:pre;overflow-x:auto">function doGet(e) {
+  const sheet = SpreadsheetApp
+    .getActiveSpreadsheet()
+    .getActiveSheet();
+  const rows = sheet.getDataRange()
+    .getValues();
+  const headers = rows[0].map(h =>
+    h.toString().toLowerCase().trim());
+  const data = rows.slice(1).map(row => {
+    const obj = {};
+    headers.forEach((h,i) => obj[h]=row[i]);
+    return obj;
+  });
+  const json = JSON.stringify(data);
+  const cb = e && e.parameter && e.parameter.callback;
+  if (cb) {
+    return ContentService
+      .createTextOutput(cb + '(' + json + ')')
+      .setMimeType(ContentService.MimeType.JAVASCRIPT);
+  }
+  return ContentService
+    .createTextOutput(json)
+    .setMimeType(ContentService.MimeType.JSON);
+}</div>
+            <div style="color:var(--amber);margin-top:4px">After this, just hit Refresh whenever you add shows to your sheet.</div>
+          </div>
+        </details>
+        <div class="status" id="sheet-status"></div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="sidebar-section">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+          <div class="sidebar-label" style="margin-bottom:0">Or import manually</div>
+          <button onclick="toggleManual()" id="manual-toggle" style="background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer">▸ show</button>
+        </div>
+        <div id="manual-import" style="display:none">
+          <div style="display:flex;gap:3px;background:var(--bg3);border-radius:8px;padding:3px;margin-bottom:8px">
+            <button class="imp-tab active" onclick="setImportMode('paste')">Paste CSV</button>
+            <button class="imp-tab" onclick="setImportMode('file')">Upload file</button>
+            <button class="imp-tab" onclick="setImportMode('manual')">Quick add</button>
+          </div>
+          <div id="imp-paste">
+            <textarea class="inp" id="csv-paste" rows="4" placeholder="Date,Artist,Venue,City&#10;2024-03-15,Radiohead,MSG,New York" style="resize:vertical;font-family:var(--mono);font-size:11px;line-height:1.5;margin-bottom:6px"></textarea>
+            <button class="btn btn-ghost" onclick="loadCSVPaste()" style="width:100%">Import pasted CSV</button>
+          </div>
+          <div id="imp-file" style="display:none">
+            <label style="display:flex;align-items:center;justify-content:center;gap:8px;background:var(--bg3);border:1px dashed var(--border2);border-radius:var(--radius);padding:18px 12px;cursor:pointer;font-size:13px;color:var(--muted)" id="file-drop-label">
+              ↑ Choose .csv file
+              <input type="file" accept=".csv" id="file-input" style="display:none" onchange="loadCSVFile(this)">
+            </label>
+          </div>
+          <div id="imp-manual" style="display:none">
+            <div class="input-group">
+              <input class="inp" id="m-date" type="date">
+              <input class="inp" id="m-artist" placeholder="Artist">
+              <input class="inp" id="m-venue" placeholder="Venue">
+              <input class="inp" id="m-city" placeholder="City">
+              <button class="btn btn-ghost" onclick="addManual()">Add show</button>
+              <button class="btn btn-ghost" style="font-size:11px" onclick="exportCSV()">Export CSV</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+
+
+      <div class="divider"></div>
+
+      <div class="sidebar-section">
+        <div class="sidebar-label">Add a show</div>
+        <div class="input-group">
+          <input class="inp" id="add-date" type="date" placeholder="Date">
+          <input class="inp" id="add-artist" placeholder="Artist *">
+          <input class="inp" id="add-venue" placeholder="Venue">
+          <input class="inp" id="add-city" placeholder="City">
+          <div style="display:flex;gap:6px">
+            <input class="inp" id="add-state" placeholder="State" style="flex:1">
+            <input class="inp" id="add-country" placeholder="Country" style="flex:1">
+          </div>
+          <input class="inp" id="add-notes" placeholder="Notes (optional)">
+          <button class="btn" onclick="addShowToSheet()">Add to Sheet</button>
+        </div>
+        <div class="status" id="add-status"></div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="sidebar-section">
+        <div class="sidebar-label">Sync</div>
+        <small style="font-size:11px;color:var(--muted);display:block;margin-bottom:8px;line-height:1.5">Fetch setlists for any new shows and reload everything from your sheet</small>
+        <button class="btn btn-ghost" id="sync-btn" onclick="syncAll()">Sync Setlists + Reload</button>
+        <div class="status" id="sync-status"></div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="sidebar-section">
+        <div class="sidebar-label">Demo</div>
+        <button class="btn btn-ghost" onclick="loadDemo()">Try with demo data</button>
+      </div>
+    </aside>
+
+    <!-- Content -->
+    <main class="content">
+
+      <!-- MAP VIEW -->
+      <div class="view active" id="view-map">
+        <div class="stats-grid" id="top-stats"></div>
+        <div id="map-container">
+          <div class="map-tooltip" id="map-tooltip"></div>
+          <svg id="world-map" viewBox="0 0 1000 500" preserveAspectRatio="xMidYMid meet" style="width:100%;height:100%">
+            <g id="countries-layer"></g>
+            <g id="dots-layer"></g>
+          </svg>
+        </div>
+        <div class="panel">
+          <div class="panel-header">
+            <span class="section-title">Cities visited</span>
+          </div>
+          <div style="padding:12px 16px">
+            <table class="lb-table" id="cities-table">
+              <thead><tr><th>#</th><th>City</th><th>Shows</th><th></th></tr></thead>
+              <tbody id="cities-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- CONCERTS VIEW -->
+      <div class="view" id="view-concerts">
+        <div class="filter-bar">
+          <input class="search-inp" id="concert-search" placeholder="Search artist, venue..." oninput="renderConcerts()" style="width:220px">
+          <select class="filter-select" id="concert-year" onchange="renderConcerts()">
+            <option value="">All years</option>
+          </select>
+          <select class="filter-select" id="concert-artist-filter" onchange="renderConcerts()">
+            <option value="">All artists</option>
+          </select>
+          <span id="concert-count" style="margin-left:auto;font-size:12px;color:var(--muted);font-family:var(--mono)"></span>
+        </div>
+        <div class="concert-list" id="concert-list"></div>
+      </div>
+
+      <!-- ARTISTS VIEW -->
+      <div class="view" id="view-artists">
+        <div class="section-header">
+          <span class="section-title">Artists seen</span>
+          <input class="search-inp" id="artist-search" placeholder="Search..." oninput="renderArtists()">
+        </div>
+        <div class="panel">
+          <table class="lb-table" id="artists-table">
+            <thead><tr><th>#</th><th>Artist</th><th>Times seen</th><th>Last seen</th><th></th></tr></thead>
+            <tbody id="artists-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- VENUES VIEW -->
+      <div class="view" id="view-venues">
+        <div class="section-header">
+          <span class="section-title">Venues visited</span>
+          <input class="search-inp" id="venue-search" placeholder="Search..." oninput="renderVenues()">
+        </div>
+        <div class="panel">
+          <table class="lb-table" id="venues-table">
+            <thead><tr><th>#</th><th>Venue</th><th>City</th><th>Visits</th><th></th></tr></thead>
+            <tbody id="venues-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- SONGS VIEW -->
+      <div class="view" id="view-songs">
+        <div class="section-header">
+          <span class="section-title">Songs heard live</span>
+          <input class="search-inp" id="song-search" placeholder="Search songs..." oninput="renderSongs()">
+        </div>
+        <div id="artist-filter-wrap" class="artist-filter"></div>
+        <div class="panel">
+          <table class="lb-table" id="songs-table">
+            <thead><tr><th>#</th><th>Song</th><th>Artist</th><th>Times heard</th><th></th></tr></thead>
+            <tbody id="songs-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- YEARS VIEW -->
+      <div class="view" id="view-years">
+        <div class="yr-header">
+          <div id="yr-tabs" class="yr-tab-row"></div>
+          <div id="yr-summary-stats" class="stats-grid" style="margin-bottom:0"></div>
+        </div>
+
+        <div class="yr-body">
+          <!-- Left column: breakdown panels -->
+          <div class="yr-left">
+            <div class="panel yr-panel">
+              <div class="panel-header">
+                <span class="section-title">Shows by artist</span>
+                <span class="section-count" id="yr-artist-count"></span>
+              </div>
+              <div style="padding:0 4px 8px">
+                <table class="lb-table" id="yr-artists-table">
+                  <thead><tr><th>#</th><th>Artist</th><th>Shows</th><th></th></tr></thead>
+                  <tbody id="yr-artists-tbody"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="panel yr-panel">
+              <div class="panel-header">
+                <span class="section-title">Shows by venue</span>
+                <span class="section-count" id="yr-venue-count"></span>
+              </div>
+              <div style="padding:0 4px 8px">
+                <table class="lb-table" id="yr-venues-table">
+                  <thead><tr><th>#</th><th>Venue</th><th>City</th><th>Shows</th><th></th></tr></thead>
+                  <tbody id="yr-venues-tbody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right column -->
+          <div class="yr-right">
+            <div class="panel yr-panel">
+              <div class="panel-header">
+                <span class="section-title">Shows by city</span>
+                <span class="section-count" id="yr-city-count"></span>
+              </div>
+              <div style="padding:0 4px 8px">
+                <table class="lb-table" id="yr-cities-table">
+                  <thead><tr><th>#</th><th>City</th><th>Shows</th><th></th></tr></thead>
+                  <tbody id="yr-cities-tbody"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="panel yr-panel">
+              <div class="panel-header">
+                <span class="section-title">Shows by genre</span>
+                <span class="section-count" id="yr-genre-count"></span>
+              </div>
+              <div style="padding:0 4px 8px">
+                <table class="lb-table" id="yr-genres-table">
+                  <thead><tr><th>#</th><th>Genre</th><th>Shows</th><th></th></tr></thead>
+                  <tbody id="yr-genres-tbody"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="panel yr-panel">
+              <div class="panel-header"><span class="section-title">Shows timeline</span></div>
+              <div style="padding:12px 16px">
+                <div id="yr-timeline"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+
+      <!-- AUDIT VIEW -->
+      <div class="view" id="view-audit">
+        <div style="margin-bottom:1rem">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+            <span class="section-title">Setlist coverage audit</span>
+            <input class="search-inp" id="audit-search" placeholder="Search artist or show..." oninput="renderAudit()" style="width:220px">
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+            <button class="audit-filter-btn active" id="afbtn-all"     onclick="setAuditFilter('all')"    >All shows <span class="audit-filter-count" id="afc-all"></span></button>
+            <button class="audit-filter-btn"         id="afbtn-ok"      onclick="setAuditFilter('ok')"     >&#10003; Has songs <span class="audit-filter-count" id="afc-ok"></span></button>
+            <button class="audit-filter-btn"         id="afbtn-empty"   onclick="setAuditFilter('empty')"  >&#9679; No songs <span class="audit-filter-count" id="afc-empty"></span></button>
+            <button class="audit-filter-btn"         id="afbtn-missing" onclick="setAuditFilter('missing')">&#215; No setlist <span class="audit-filter-count" id="afc-missing"></span></button>
+            <span id="audit-counts" style="margin-left:auto;font-size:11px;color:var(--muted);font-family:var(--mono)"></span>
+          </div>
+          <input type="hidden" id="audit-filter" value="all">
+        </div>
+        <div class="panel">
+          <table class="lb-table" id="audit-table">
+            <thead>
+              <tr>
+                <th>Status</th>
+                <th>Date</th>
+                <th>Artist</th>
+                <th>Venue · City</th>
+                <th>Cache key</th>
+                <th>Songs</th>
+              </tr>
+            </thead>
+            <tbody id="audit-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+
+      <!-- OPENERS VIEW -->
+      <div class="view" id="view-openers">
+        <div class="section-header" style="margin-bottom:1rem">
+          <div>
+            <span class="section-title">Opening acts & support</span>
+            <div style="font-size:12px;color:var(--muted);margin-top:4px">Artists found in your setlist.fm data for shows you attended, but not yet in your Concerts tab. Add them with one click.</div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+<span id="openers-count" style="font-size:12px;color:var(--muted);font-family:var(--mono)"></span>
+          </div>
+        </div>
+        <div class="panel">
+          <table class="lb-table" id="openers-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Opener</th>
+                <th>Headliner</th>
+                <th>Venue · City</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="openers-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<!-- Setlist Modal -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <div class="modal-head">
+      <div>
+        <div class="modal-title" id="modal-title"></div>
+        <div class="modal-sub" id="modal-sub"></div>
+      </div>
+      <button class="modal-close" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
+
+<script>
+
+
+
+
+
+
+
+
+
+
+
+// ─── State ───────────────────────────────────────────────────────────────────
+let concerts = [];
+let setlistCache = {};
+let apiKey = '-c95doh3EOSCg1jfrCHBJ9qy9lMW5TGhAVLf';
+
+// City geocoding (expanded)
+const GEO = {
+  'New York': [40.71, -74.01], 'Los Angeles': [34.05, -118.24], 'Chicago': [41.88, -87.63],
+  'London': [51.51, -0.13], 'Paris': [48.85, 2.35], 'Berlin': [52.52, 13.41],
+  'Tokyo': [35.68, 139.69], 'Sydney': [-33.87, 151.21], 'Toronto': [43.65, -79.38],
+  'San Francisco': [37.77, -122.42], 'Seattle': [47.61, -122.33], 'Austin': [30.27, -97.74],
+  'Nashville': [36.17, -86.78], 'Atlanta': [33.75, -84.39], 'Boston': [42.36, -71.06],
+  'Philadelphia': [39.95, -75.17], 'Denver': [39.74, -104.98], 'Portland': [45.52, -122.68],
+  'Miami': [25.77, -80.19], 'Las Vegas': [36.17, -115.14], 'Minneapolis': [44.98, -93.27],
+  'Dallas': [32.78, -96.8], 'Houston': [29.76, -95.37], 'Phoenix': [33.45, -112.07],
+  'New Orleans': [29.95, -90.07], 'Detroit': [42.33, -83.05], 'Cleveland': [41.5, -81.69],
+  'Pittsburgh': [40.44, -79.99], 'St. Louis': [38.63, -90.2], 'Indianapolis': [39.77, -86.16],
+  'Columbus': [39.96, -82.99], 'Charlotte': [35.23, -80.84], 'Baltimore': [39.29, -76.61],
+  'Washington': [38.91, -77.04], 'Washington D.C.': [38.91, -77.04],
+  'Manchester': [53.48, -2.24], 'Birmingham': [52.48, -1.9], 'Glasgow': [55.86, -4.25],
+  'Edinburgh': [55.95, -3.19], 'Bristol': [51.45, -2.58], 'Leeds': [53.8, -1.55],
+  'Amsterdam': [52.37, 4.9], 'Brussels': [50.85, 4.35], 'Vienna': [48.21, 16.37],
+  'Prague': [50.08, 14.43], 'Budapest': [47.5, 19.04], 'Stockholm': [59.33, 18.07],
+  'Oslo': [59.91, 10.75], 'Copenhagen': [55.68, 12.57], 'Helsinki': [60.17, 24.94],
+  'Dublin': [53.33, -6.25], 'Zurich': [47.38, 8.54], 'Barcelona': [41.39, 2.16],
+  'Madrid': [40.42, -3.7], 'Rome': [41.9, 12.5], 'Milan': [45.46, 9.19],
+  'Munich': [48.14, 11.58], 'Hamburg': [53.55, 9.99], 'Cologne': [50.94, 6.96],
+  'Frankfurt': [50.11, 8.68], 'Düsseldorf': [51.23, 6.78],
+  'Melbourne': [-37.81, 144.96], 'Brisbane': [-27.47, 153.03], 'Perth': [-31.95, 115.86],
+  'Auckland': [-36.87, 174.77], 'Vancouver': [49.28, -123.12], 'Montreal': [45.5, -73.57],
+  'Calgary': [51.05, -114.07], 'Ottawa': [45.42, -75.69],
+  'Mexico City': [19.43, -99.13], 'São Paulo': [-23.55, -46.63], 'Buenos Aires': [-34.61, -58.38],
+  'Bogotá': [4.71, -74.07], 'Santiago': [-33.45, -70.67],
+  'Cape Town': [-33.93, 18.42], 'Johannesburg': [-26.2, 28.04],
+  'Singapore': [1.35, 103.82], 'Seoul': [37.57, 126.98], 'Bangkok': [13.75, 100.52],
+  'Mumbai': [19.08, 72.88], 'Delhi': [28.61, 77.21], 'Beijing': [39.9, 116.4],
+  'Shanghai': [31.23, 121.47],
+};
+
+// ─── Demo Data ────────────────────────────────────────────────────────────────
+function loadDemo() {
+  if (concerts.length > 0) {
+    if (!confirm('You already have ' + concerts.length + ' shows loaded. Replace them with demo data?')) return;
+  }
+  const demo = [
+    {date:'2024-03-15',artist:'Radiohead',venue:'Madison Square Garden',city:'New York',country:'USA'},
+    {date:'2024-03-18',artist:'Radiohead',venue:'United Center',city:'Chicago',country:'USA'},
+    {date:'2024-04-02',artist:'Phoebe Bridgers',venue:'The Fillmore',city:'San Francisco',country:'USA'},
+    {date:'2024-04-10',artist:'Arctic Monkeys',venue:'O2 Arena',city:'London',country:'UK'},
+    {date:'2024-04-12',artist:'Arctic Monkeys',venue:'Manchester Arena',city:'Manchester',country:'UK'},
+    {date:'2024-04-20',artist:'Tame Impala',venue:'Paradiso',city:'Amsterdam',country:'Netherlands'},
+    {date:'2024-05-05',artist:'Taylor Swift',venue:'SoFi Stadium',city:'Los Angeles',country:'USA'},
+    {date:'2024-05-06',artist:'Taylor Swift',venue:'SoFi Stadium',city:'Los Angeles',country:'USA'},
+    {date:'2024-05-18',artist:'Billie Eilish',venue:'Accor Arena',city:'Paris',country:'France'},
+    {date:'2024-06-01',artist:'LCD Soundsystem',venue:'Brooklyn Steel',city:'New York',country:'USA'},
+    {date:'2024-06-14',artist:'Nick Cave',venue:'Circus Maximus',city:'Rome',country:'Italy'},
+    {date:'2024-07-04',artist:'Radiohead',venue:'TD Garden',city:'Boston',country:'USA'},
+    {date:'2024-07-20',artist:'Phoebe Bridgers',venue:'Red Rocks Amphitheatre',city:'Denver',country:'USA'},
+    {date:'2024-08-10',artist:'Tame Impala',venue:'Enmore Theatre',city:'Sydney',country:'Australia'},
+    {date:'2024-09-03',artist:'LCD Soundsystem',venue:'Roundhouse',city:'London',country:'UK'},
+    {date:'2024-09-22',artist:'Mitski',venue:'Paramount Theatre',city:'Seattle',country:'USA'},
+    {date:'2024-10-05',artist:'The National',venue:'Beacon Theatre',city:'New York',country:'USA'},
+    {date:'2024-10-18',artist:'Radiohead',venue:'Zenith',city:'Paris',country:'France'},
+    {date:'2024-11-02',artist:'Phoebe Bridgers',venue:'Ryman Auditorium',city:'Nashville',country:'USA'},
+    {date:'2024-11-15',artist:'Arctic Monkeys',venue:'Rod Laver Arena',city:'Melbourne',country:'Australia'},
+  ];
+  // Add demo setlists
+  setlistCache['20240315_radiohead'] = {songs:[{name:'Creep',cover:null},{name:'Karma Police',cover:null},{name:'Paranoid Android',cover:null},{name:'Fake Plastic Trees',cover:null},{name:'Let Down',cover:null},{name:'No Surprises',cover:null},{name:'Pyramid Song',cover:null},{name:'Everything In Its Right Place',cover:null},{name:'How to Disappear Completely',cover:null},{name:'Idioteque',cover:null}],encores:[{name:'Exit Music',cover:null},{name:'Creep',cover:null}],support:['Caribou']};
+  setlistCache['20240402_phoebebridgers'] = {songs:[{name:'Motion Sickness',cover:null},{name:'Funeral',cover:null},{name:'Georgia',cover:null},{name:'Savior Complex',cover:null},{name:'Moon Song',cover:null},{name:"Garden Song",cover:null}],encores:[],support:['Julien Baker']};
+  concerts = demo;
+  processData();
+  setStatus('sheet-status','ok',`Demo loaded — ${demo.length} shows`);
+}
+
+// ─── Google Apps Script Loader ───────────────────────────────────────────────
+let scriptUrl = localStorage.getItem('concert_script_url') || 'https://script.google.com/macros/s/AKfycbzQe3IT00j2Ndn6cLINNahrduNljqfyTeOuN2gXJzdDN57J8Q0ynw6QnwGOrKn3AGMMGw/exec';
+if (scriptUrl) {
+  const el = document.getElementById('sheet-url');
+  if (el) el.value = scriptUrl;
+  // Auto-connect if URL is pre-set
+  window.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => fetchFromScript(scriptUrl), 300);
+  });
+}
+
+async function loadFromScript() {
+  const url = document.getElementById('sheet-url').value.trim();
+  if (!url) return setStatus('sheet-status','err','Paste your Apps Script Web App URL above');
+  localStorage.setItem('concert_script_url', url);
+  scriptUrl = url;
+  await fetchFromScript(url);
+}
+
+async function refreshFromScript() {
+  if (!scriptUrl) return setStatus('sheet-status','err','No sheet connected yet');
+  await fetchFromScript(scriptUrl);
+}
+
+async function fetchFromScript(url) {
+  setStatus('sheet-status','loading','Connecting to your sheet...');
+  try {
+    // Direct fetch — Apps Script handles CORS correctly
+    const resp = await fetch(url, { redirect: 'follow' });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const data = await resp.json();
+    if (!Array.isArray(data)) throw new Error('Unexpected response — check your Apps Script matches the instructions');
+
+    concerts = data.map(row => ({
+      date:    normalizeDate(row.date || row['show date'] || row['concert date'] || ''),
+      artist:  String(row.artist || row['artist name'] || row['performer'] || '').trim(),
+      venue:   String(row.venue || row['venue name'] || '').trim(),
+      city:    String(row.city || row['town'] || '').trim(),
+      state:   String(row['state/region'] || row.state || '').trim(),
+      country: String(row.country || '').trim(),
+      notes:   String(row.notes || '').trim(),
+    })).filter(c => c.artist && c.date);
+
+    if (!concerts.length) throw new Error('Sheet loaded but no valid rows found — check column headers match the template');
+
+    // Also load cached setlists from Setlists tab
+    try {
+      const cr = await fetch(url + '?action=setlists', { redirect: 'follow' });
+      if (cr.ok) {
+        const cacheData = await cr.json();
+        if (Array.isArray(cacheData)) {
+          setlistCache = {};
+          cacheData.forEach(row => {
+            if (!row.cache_key) return;
+            try {
+              setlistCache[row.cache_key] = {
+                artist:    row.artist    || '',
+                venueName: row.venue     || '',
+                city:      row.city      || '',
+                country:   row.country   || '',
+                songs:     JSON.parse(row.songs_json   || '[]'),
+                encores:   JSON.parse(row.encores_json  || '[]'),
+                support:   JSON.parse(row.support_json  || '[]'),
+                score:     Number(row.score || 0),
+              };
+            } catch(e) {}
+          });
+        }
+      }
+    } catch(e) { console.log('Setlist cache not loaded:', e.message); }
+
+    processData();
+    document.getElementById('refresh-btn').style.display = '';
+    const cached = Object.keys(setlistCache).length;
+    const goodSetlists = Object.values(setlistCache).filter(function(s){ return s && s.songs && s.songs.length > 0; }).length;
+    setStatus('sheet-status','ok',
+      concerts.length + ' shows loaded' +
+      (cached ? ', ' + cached + ' setlists cached (' + goodSetlists + ' with songs)' : ' — no setlist cache found'));
+  } catch(e) {
+    const msg = (e.message.includes('Failed to fetch') || e.message.includes('NetworkError'))
+      ? 'Cannot reach script. Make sure "Who has access" is set to Anyone when deploying.'
+      : e.message;
+    setStatus('sheet-status','err', msg);
+  }
+}
+
+// ─── Manual Fallback Import ──────────────────────────────────────────────────────────────────
+function toggleManual() {
+  const el = document.getElementById('manual-import');
+  const btn = document.getElementById('manual-toggle');
+  const open = el.style.display === 'none';
+  el.style.display = open ? '' : 'none';
+  btn.textContent = open ? 'hide' : 'show';
+}
+
+function setImportMode(mode) {
+  ['paste','file','manual'].forEach(m => {
+    document.getElementById('imp-'+m).style.display = m === mode ? '' : 'none';
+  });
+  document.querySelectorAll('.imp-tab').forEach((t,i) => {
+    t.classList.toggle('active', ['paste','file','manual'][i] === mode);
+  });
+}
+
+function parseAndLoad(text, label) {
+  if (!text.trim()) return setStatus('sheet-status','err','Nothing to import');
+  const parsed = Papa.parse(text.trim(), { header: true, skipEmptyLines: true, transformHeader: h => h.toLowerCase().trim() });
+  if (!parsed.data.length) return setStatus('sheet-status','err','No rows found - check CSV format');
+  concerts = parsed.data.map(row => ({
+    date:    normalizeDate(row.date || row['show date'] || row['concert date'] || ''),
+    artist:  String(row.artist || row['artist name'] || '').trim(),
+    venue:   String(row.venue || row['venue name'] || '').trim(),
+    city:    String(row.city || '').trim(),
+    country: String(row.country || '').trim(),
+    notes:   String(row.notes || '').trim(),
+  })).filter(c => c.artist && c.date);
+  processData();
+  setStatus('sheet-status','ok', label + ': ' + concerts.length + ' shows loaded');
+}
+
+function loadCSVPaste() {
+  parseAndLoad(document.getElementById('csv-paste').value, 'Imported');
+}
+
+function loadCSVFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    parseAndLoad(e.target.result, file.name);
+    document.getElementById('file-drop-label').textContent = 'Loaded: ' + file.name;
+  };
+  reader.readAsText(file);
+}
+
+function addManual() {
+  const date   = document.getElementById('m-date').value;
+  const artist = document.getElementById('m-artist').value.trim();
+  const venue  = document.getElementById('m-venue').value.trim();
+  const city   = document.getElementById('m-city').value.trim();
+  if (!date || !artist) return setStatus('sheet-status','err','Date and Artist are required');
+  concerts.push({ date, artist, venue, city, country: '', notes: '' });
+  processData();
+  setStatus('sheet-status','ok','Added - ' + concerts.length + ' total shows');
+  ['m-artist','m-venue','m-city'].forEach(id => document.getElementById(id).value = '');
+}
+
+function exportCSV() {
+  if (!concerts.length) return;
+  const rows = concerts.map(c => ['date','artist','venue','city','country','notes'].map(k => '"' + (c[k]||'').replace(/"/g,'""') + '"').join(','));
+  const blob = new Blob(['date,artist,venue,city,country,notes\n'+rows.join('\n')], {type:'text/csv'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'my-concerts.csv'; a.click();
+}
+
+function clearAll() {
+  if (!confirm('Clear all loaded shows?')) return;
+  concerts = []; setlistCache = {};
+  processData();
+  setStatus('sheet-status','ok','Cleared');
+}
+
+// ─── Data Processing ──────────────────────────────────────────────────────────
+function processData() {
+  if (!concerts.length) return;
+  updateBadge();
+  renderTopStats();
+  renderMap();
+  renderConcerts();
+  renderArtists();
+  renderVenues();
+  renderSongs();
+  renderCitiesTable();
+  populateFilters();
+  renderYearsView();
+  if (document.getElementById('view-audit') && document.getElementById('view-audit').classList.contains('active')) renderAudit();
+  // Queue MusicBrainz genre lookups for all artists
+  var uniqueArtistsP = [...new Set(concerts.map(function(c,i){ return getDisplayArtist(c,i); }))];
+  uniqueArtistsP.forEach(function(a) { queueMBLookup(a); });
+}
+
+function updateBadge() {
+  document.getElementById('total-badge').textContent = `${concerts.length} shows`;
+}
+
+function getArtistStats() {
+  const map = {};
+  concerts.forEach((c, i) => {
+    // prefer setlist.fm canonical artist name
+    const sl = setlistCache[getCacheKey(c, i)];
+    const name = (sl && sl.artist) ? sl.artist : c.artist;
+    if (!map[name]) map[name] = { count: 0, dates: [] };
+    map[name].count++;
+    map[name].dates.push(c.date);
+  });
+  return Object.entries(map).sort((a,b) => b[1].count - a[1].count);
+}
+
+function getVenueStats() {
+  const map = {};
+  concerts.forEach((c, i) => {
+    const sl = setlistCache[getCacheKey(c, i)];
+    const venue   = (sl && sl.venueName) ? sl.venueName : c.venue;
+    const city    = (sl && sl.city)      ? sl.city      : c.city;
+    const key = venue + '|' + city;
+    if (!map[key]) map[key] = { venue, city, count: 0 };
+    map[key].count++;
+  });
+  return Object.entries(map).sort((a,b) => b[1].count - a[1].count);
+}
+
+function getCityStats() {
+  const map = {};
+  concerts.forEach((c, i) => {
+    const sl = setlistCache[getCacheKey(c, i)];
+    const city = (sl && sl.city) ? sl.city : c.city;
+    if (!city) return;
+    if (!map[city]) map[city] = 0;
+    map[city]++;
+  });
+  return Object.entries(map).sort((a,b) => b[1] - a[1]);
+}
+
+function getSongStats(filterArtist = null) {
+  const map = {};
+  concerts.forEach((c, i) => {
+    const sl = setlistCache[getCacheKey(c, i)];
+    if (!sl) return;
+    // Use the display artist name (setlist.fm canonical if available)
+    const artist = getDisplayArtist(c, i);
+    const all = [...(sl.songs||[]), ...(sl.encores||[])];
+    all.forEach(song => {
+      if (!song.name) return;
+      const key = song.name + '|||' + artist;
+      if (!map[key]) map[key] = { name: song.name, artist: artist, count: 0 };
+      map[key].count++;
+    });
+  });
+  let entries = Object.entries(map).sort((a,b) => b[1].count - a[1].count);
+  if (filterArtist) entries = entries.filter(([,v]) => v.artist === filterArtist);
+  return entries;
+}
+
+// ─── Render Top Stats ─────────────────────────────────────────────────────────
+function renderTopStats() {
+  const artists = new Set(concerts.map(c => c.artist)).size;
+  const venues  = new Set(concerts.map(c => c.venue + c.city)).size;
+  const cities  = new Set(concerts.map(c => c.city)).size;
+  const years   = new Set(concerts.map(c => (c.date||'').split('-')[0]||c.date.split('/')[2])).size;
+  document.getElementById('top-stats').innerHTML = `
+    ${stat(concerts.length,'Shows attended','')}
+    ${stat(artists,'Artists seen','')}
+    ${stat(venues,'Unique venues','')}
+    ${stat(cities,'Cities visited','')}
+  `;
+}
+function stat(v,l,s) { return `<div class="stat-card"><div class="stat-label">${l}</div><div class="stat-value">${v}</div>${s?`<div class="stat-sub">${s}</div>`:''}</div>`; }
+
+// ─── Render Map (D3 + Natural Earth, pan/zoom) ───────────────────────────────
+var mapReady = false;
+var pendingMapRender = false;
+var geoPath = null;
+var geoProjection = null;
+var mapZoom = null;
+var mapSvg = null;
+var mapG = null; // main group that gets zoomed // main group that gets zoomed
+
+function renderMap() {
+  if (!mapReady) { pendingMapRender = true; return; }
+  drawDots();
+}
+
+function initMap() {
+  const svgEl = document.getElementById('world-map');
+  mapSvg = d3.select('#world-map');
+
+  // Add a zoom-reset button to the map container
+  const container = document.getElementById('map-container');
+  const resetBtn = document.createElement('button');
+  resetBtn.textContent = '⊙ Reset';
+  resetBtn.style.cssText = 'position:absolute;top:10px;right:10px;z-index:10;background:var(--bg2);border:1px solid var(--border2);color:var(--muted);font-family:var(--font);font-size:11px;padding:4px 10px;border-radius:6px;cursor:pointer';
+  resetBtn.onclick = function() {
+    mapSvg.transition().duration(500).call(mapZoom.transform, d3.zoomIdentity);
+  };
+  container.style.position = 'relative';
+  container.appendChild(resetBtn);
+
+  geoProjection = d3.geoNaturalEarth1()
+    .scale(153)
+    .translate([500, 250]);
+  geoPath = d3.geoPath().projection(geoProjection);
+
+  // Main group — everything lives here so zoom transforms it together
+  mapG = mapSvg.append('g').attr('id', 'map-zoom-group');
+
+  // Ocean background inside the group
+  mapG.append('rect')
+    .attr('width', 1000).attr('height', 500)
+    .attr('fill', '#0d1117');
+
+  // Set up zoom behaviour
+  mapZoom = d3.zoom()
+    .scaleExtent([1, 12])
+    .on('zoom', function(event) {
+      mapG.attr('transform', event.transform);
+      // Scale dot stroke widths and keep them readable at high zoom
+      mapG.selectAll('.concert-dot')
+        .attr('stroke-width', 1.5 / event.transform.k);
+      mapG.selectAll('.concert-pulse')
+        .attr('stroke-width', 1 / event.transform.k);
+    });
+
+  mapSvg.call(mapZoom)
+    .on('dblclick.zoom', null); // disable double-click zoom (we use it for city filter)
+
+  // Hint text
+  mapSvg.append('text')
+    .attr('x', 8).attr('y', 492)
+    .attr('fill', '#3a3f50')
+    .attr('font-size', '10')
+    .text('Scroll to zoom · Drag to pan · Click city to filter');
+
+  // Load Natural Earth countries
+  fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json')
+    .then(function(r) { return r.json(); })
+    .then(function(world) {
+      const countries = topojson.feature(world, world.objects.countries);
+
+      // Graticule
+      mapG.append('path')
+        .datum(d3.geoGraticule()())
+        .attr('d', geoPath)
+        .attr('fill', 'none')
+        .attr('stroke', '#161b26')
+        .attr('stroke-width', '0.4');
+
+      // Country fills
+      mapG.selectAll('.country')
+        .data(countries.features)
+        .enter().append('path')
+        .attr('class', 'country')
+        .attr('d', geoPath)
+        .attr('fill', '#1a1f2e')
+        .attr('stroke', '#2d3448')
+        .attr('stroke-width', '0.5');
+
+      // Sphere outline
+      mapG.append('path')
+        .datum({type: 'Sphere'})
+        .attr('d', geoPath)
+        .attr('fill', 'none')
+        .attr('stroke', '#2d3448')
+        .attr('stroke-width', '0.8');
+
+      mapReady = true;
+      if (pendingMapRender) { pendingMapRender = false; drawDots(); }
+    })
+    .catch(function(e) {
+      console.error('Map load failed', e);
+      mapReady = true;
+      if (pendingMapRender) { pendingMapRender = false; drawDots(); }
+    });
+}
+
+function drawDots() {
+  if (!mapReady || !mapG) return;
+  mapG.selectAll('.dot-group').remove();
+
+  const tooltip = document.getElementById('map-tooltip');
+  const cityStats = getCityStats();
+  if (!cityStats.length) return;
+  const max = cityStats[0][1] || 1;
+
+  // Get current zoom transform so new dots respect it
+  const currentTransform = d3.zoomTransform(document.getElementById('world-map'));
+
+  cityStats.forEach(function(entry) {
+    const city = entry[0], count = entry[1];
+    const coords = GEO[city];
+    if (!coords) return;
+    const pt = geoProjection([coords[1], coords[0]]); // [lng, lat]
+    if (!pt || isNaN(pt[0]) || isNaN(pt[1])) return;
+
+    const r = 5 + (count / max) * 10;
+    const color = count > 5 ? '#a78bfa' : count > 2 ? '#7c6af7' : '#6155c4';
+
+    const g = mapG.append('g').attr('class', 'dot-group').attr('cursor', 'pointer');
+
+    // Pulse ring
+    g.append('circle')
+      .attr('class', 'concert-pulse')
+      .attr('cx', pt[0]).attr('cy', pt[1])
+      .attr('r', r + 5)
+      .attr('fill', 'rgba(124,106,247,0.12)')
+      .attr('stroke', 'none');
+
+    // Main dot
+    const dot = g.append('circle')
+      .attr('class', 'concert-dot')
+      .attr('cx', pt[0]).attr('cy', pt[1])
+      .attr('r', r)
+      .attr('fill', color)
+      .attr('stroke', 'rgba(255,255,255,0.35)')
+      .attr('stroke-width', 1.5 / currentTransform.k);
+
+    g.on('mouseenter', function(event) {
+        dot.attr('r', r + 3);
+        const venues = [
+          ...new Set(
+            concerts
+              .map(function(c, i) {
+                if (c.city !== city) {
+                  const sl = setlistCache[getCacheKey(c, i)];
+                  if (!sl || sl.city !== city) return null;
+                }
+                const sl = setlistCache[getCacheKey(c, i)];
+                return (sl && sl.venueName) ? sl.venueName : c.venue;
+              })
+              .filter(Boolean)
+          )
+        ].slice(0, 3);
+
+        tooltip.innerHTML =
+          '<strong>' + city + '</strong>' +
+          '<span>' + count + ' show' + (count > 1 ? 's' : '') + '</span>' +
+          (venues.length ? '<div style="margin-top:4px;font-size:11px;color:#7a7f8e">' + venues.join('<br>') + '</div>' : '');
+
+        const svgRect = document.getElementById('world-map').getBoundingClientRect();
+        // Transform the SVG coord to screen coord accounting for zoom
+        const t = d3.zoomTransform(document.getElementById('world-map'));
+        const screenX = pt[0] * t.k + t.x;
+        const screenY = pt[1] * t.k + t.y;
+        const pxFrac = svgRect.width / 1000;
+        const pyFrac = svgRect.height / 500;
+        tooltip.style.left = Math.min(screenX * pxFrac + 12, svgRect.width - 190) + 'px';
+        tooltip.style.top  = Math.max(screenY * pyFrac - 70, 4) + 'px';
+        tooltip.style.display = 'block';
+      })
+      .on('mouseleave', function() {
+        dot.attr('r', r);
+        tooltip.style.display = 'none';
+      })
+      .on('click', function(event) {
+        event.stopPropagation();
+        switchView('concerts');
+        document.getElementById('concert-search').value = city;
+        renderConcerts();
+      });
+  });
+
+  // Re-apply current zoom scale to stroke widths
+  mapG.selectAll('.concert-dot').attr('stroke-width', 1.5 / currentTransform.k);
+  mapG.selectAll('.concert-pulse').attr('stroke-width', 1 / currentTransform.k);
+}
+
+
+
+// ─── Cities Table ─────────────────────────────────────────────────────────────
+function renderCitiesTable() {
+  const stats = getCityStats();
+  const max = stats[0]?.[1] || 1;
+  document.getElementById('cities-tbody').innerHTML = stats.map(([city,count],i) => `
+    <tr onclick="switchView('concerts');document.getElementById('concert-search').value='${city}';renderConcerts()">
+      <td class="rank ${i<3?'rank-'+(i+1):''}">${i+1}</td>
+      <td>${city}</td>
+      <td><div class="bar-wrap"><div class="bar"><div class="bar-fill" style="width:${count/max*100}%"></div></div><span class="count-badge">${count}</span></div></td>
+      <td></td>
+    </tr>
+  `).join('');
+}
+
+// ─── Concerts View ────────────────────────────────────────────────────────────
+function populateFilters() {
+  const years = [...new Set(concerts.map(c => parseYear(c.date)))].filter(Boolean).sort().reverse();
+  const yearSel = document.getElementById('concert-year');
+  yearSel.innerHTML = '<option value="">All years</option>' + years.map(y=>`<option>${y}</option>`).join('');
+  const artists = [...new Set(concerts.map((c,i) => getDisplayArtist(c,i)))].sort();
+  const artistSel = document.getElementById('concert-artist-filter');
+  artistSel.innerHTML = '<option value="">All artists</option>' + artists.map(a=>`<option>${a}</option>`).join('');
+}
+
+function normalizeDate(raw) {
+  if (!raw) return '';
+  var s = String(raw).trim();
+  // Already ISO YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
+  // Google Sheets serial number (days since 1899-12-30)
+  if (/^\d{5}$/.test(s)) {
+    var d = new Date(Math.round((parseInt(s) - 25569) * 86400 * 1000));
+    return d.toISOString().slice(0,10);
+  }
+  // M/D/YYYY or MM/DD/YYYY
+  if (s.includes('/')) {
+    var parts = s.split('/');
+    if (parts.length === 3) {
+      var y = parts[2].length === 4 ? parts[2] : '20' + parts[2];
+      var m = parts[0].padStart(2,'0');
+      var d2 = parts[1].padStart(2,'0');
+      return y + '-' + m + '-' + d2;
+    }
+  }
+  // Try native parse as fallback
+  try {
+    var dt = new Date(s);
+    if (!isNaN(dt)) return dt.toISOString().slice(0,10);
+  } catch(e) {}
+  return s;
+}
+
+function parseYear(date) {
+  var iso = normalizeDate(date);
+  if (!iso) return '';
+  return iso.slice(0,4);
+}
+
+function getDisplayArtist(c, idx) {
+  const sl = setlistCache[getCacheKey(c, idx)];
+  return (sl && sl.artist) ? sl.artist : c.artist;
+}
+function getDisplayVenue(c, idx) {
+  const sl = setlistCache[getCacheKey(c, idx)];
+  return (sl && sl.venueName) ? sl.venueName : c.venue;
+}
+function getDisplayCity(c, idx) {
+  const sl = setlistCache[getCacheKey(c, idx)];
+  return (sl && sl.city) ? sl.city : c.city;
+}
+
+function renderConcerts() {
+  const q = document.getElementById('concert-search').value.toLowerCase();
+  const year = document.getElementById('concert-year').value;
+  const artistF = document.getElementById('concert-artist-filter').value;
+  let filtered = concerts.map((c, i) => ({c, i})).filter(({c, i}) => {
+    const artist = getDisplayArtist(c, i);
+    const venue  = getDisplayVenue(c, i);
+    const city   = getDisplayCity(c, i);
+    const matchQ = !q || artist.toLowerCase().includes(q) || venue.toLowerCase().includes(q) || city.toLowerCase().includes(q);
+    const matchY = !year || parseYear(c.date) === year;
+    const matchA = !artistF || artist === artistF;
+    return matchQ && matchY && matchA;
+  }).sort((a,b) => b.c.date.localeCompare(a.c.date));
+  document.getElementById('concert-count').textContent = `${filtered.length} shows`;
+
+  document.getElementById('concert-list').innerHTML = filtered.map(({c, i: idx}) => {
+    const cacheKey = getCacheKey(c, idx);
+    const sl0 = setlistCache[cacheKey];
+    const hasSetlist = !!(sl0 && !sl0.notFound && !sl0.error && (sl0.songs||[]).length > 0);
+    return `
+      <div class="concert-item" onclick="openConcert(${idx})">
+        <div class="concert-date">${formatDate(c.date)}</div>
+        <div>
+          <div class="concert-artist">${getDisplayArtist(c, idx)}</div>
+          <div class="concert-venue">${getDisplayVenue(c, idx)}${getDisplayCity(c, idx) ? ` · ${getDisplayCity(c, idx)}` : ''}</div>
+        </div>
+        <div class="concert-tag ${hasSetlist ? 'loaded' : ''}">${hasSetlist ? 'setlist ✓' : 'no setlist'}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+function formatDate(d) {
+  if (!d) return '';
+  try {
+    const date = new Date(d);
+    if (isNaN(date)) return d;
+    return date.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+  } catch { return d; }
+}
+
+// ─── Artists View ─────────────────────────────────────────────────────────────
+function renderArtists() {
+  const q = document.getElementById('artist-search').value.toLowerCase();
+  const stats = getArtistStats().filter(([a]) => !q || a.toLowerCase().includes(q));
+  const max = stats[0]?.[1].count || 1;
+  document.getElementById('artists-tbody').innerHTML = stats.map(([artist,data],i) => `
+    <tr onclick="switchView('concerts');document.getElementById('concert-artist-filter').value='${artist}';renderConcerts();switchView('concerts')">
+      <td class="rank ${i<3?'rank-'+(i+1):''}">${i+1}</td>
+      <td style="font-weight:500">${artist}</td>
+      <td><div class="bar-wrap"><div class="bar"><div class="bar-fill" style="width:${data.count/max*100}%"></div></div><span class="count-badge">${data.count}</span></div></td>
+      <td style="font-family:var(--mono);font-size:12px;color:var(--muted)">${formatDate([...data.dates].sort().pop())}</td>
+      <td></td>
+    </tr>
+  `).join('');
+}
+
+// ─── Venues View ──────────────────────────────────────────────────────────────
+function renderVenues() {
+  const q = document.getElementById('venue-search').value.toLowerCase();
+  const stats = getVenueStats().filter(([,v]) => !q || v.venue.toLowerCase().includes(q) || v.city.toLowerCase().includes(q));
+  const max = stats[0]?.[1].count || 1;
+  document.getElementById('venues-tbody').innerHTML = stats.map(([,data],i) => `
+    <tr onclick="switchView('concerts');document.getElementById('concert-search').value='${data.venue}';renderConcerts()">
+      <td class="rank ${i<3?'rank-'+(i+1):''}">${i+1}</td>
+      <td style="font-weight:500">${data.venue}</td>
+      <td style="color:var(--muted);font-size:12px">${data.city}</td>
+      <td><div class="bar-wrap"><div class="bar"><div class="bar-fill" style="width:${data.count/max*100}%"></div></div><span class="count-badge">${data.count}</span></div></td>
+      <td></td>
+    </tr>
+  `).join('');
+}
+
+// ─── Songs View ───────────────────────────────────────────────────────────────
+let songArtistFilter = null;
+function renderSongs() {
+  const q = document.getElementById('song-search').value.toLowerCase();
+  const uniqueArtists = [...new Set(
+    concerts.map((c, i) => {
+      const sl = setlistCache[getCacheKey(c,i)];
+      return (sl && !sl.notFound && !sl.error && (sl.songs||[]).length > 0) ? getDisplayArtist(c,i) : null;
+    }).filter(Boolean)
+  )].sort();
+
+  const allBtn = '<button class="af-btn ' + (!songArtistFilter ? 'active' : '') + '" onclick="setSongFilter(null)">All</button>';
+  const artistBtns = uniqueArtists.map(function(a) {
+    const isActive = songArtistFilter === a ? 'active' : '';
+    const safeA = encodeURIComponent(a);
+    return '<button class="af-btn ' + isActive + '" onclick="setSongFilter(decodeURIComponent(\'' + safeA + '\'))">' + a + '</button>';
+  });
+  document.getElementById('artist-filter-wrap').innerHTML = [allBtn].concat(artistBtns).join('');
+
+  const stats = getSongStats(songArtistFilter).filter(function(entry) {
+    return !q || entry[1].name.toLowerCase().includes(q);
+  });
+
+  if (!stats.length) {
+    document.getElementById('songs-tbody').innerHTML = '<tr><td colspan="5" class="empty">No song data yet — fetch setlists first, or click a show to load its setlist.</td></tr>';
+    return;
+  }
+  const max = stats[0][1].count || 1;
+  document.getElementById('songs-tbody').innerHTML = stats.map(function(entry, i) {
+    const data = entry[1];
+    const safeN = encodeURIComponent(data.name);
+    const safeA = encodeURIComponent(data.artist);
+    return '<tr style="cursor:pointer" onclick="openSongHistory(decodeURIComponent(\'' + safeN + '\'), decodeURIComponent(\'' + safeA + '\'))">' +
+      '<td class="rank">' + (i+1) + '</td>' +
+      '<td style="font-weight:500">' + data.name + '</td>' +
+      '<td style="color:var(--muted);font-size:12px">' + data.artist + '</td>' +
+      '<td><div class="bar-wrap"><div class="bar"><div class="bar-fill" style="width:' + Math.round(data.count/max*100) + '%"></div></div><span class="count-badge song-times">' + data.count + '×</span></div></td>' +
+      '<td style="color:var(--muted);font-size:11px">▸ history</td></tr>';
+  }).join('');
+}
+
+function setSongFilter(artist) {
+  songArtistFilter = artist;
+  renderSongs();
+}
+
+
+// ─── Concert Detail Modal ─────────────────────────────────────────────────────
+function getCacheKey(concert, idx) {
+  const d = normalizeDate(concert.date || '').replace(/-/g,'');
+  const a = (concert.artist || '').toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,20);
+  return d && a ? d + '_' + a : 'idx_' + idx;
+}
+
+async function openConcert(idx) {
+  const c = concerts[idx];
+  const cacheKey = getCacheKey(c, idx);
+
+  document.getElementById('modal-title').textContent = getDisplayArtist(c, idx);
+  document.getElementById('modal-sub').textContent =
+    formatDate(c.date) + ' · ' + getDisplayVenue(c, idx) +
+    (getDisplayCity(c, idx) ? ', ' + getDisplayCity(c, idx) : '');
+  document.getElementById('modal').classList.add('open');
+
+  // Check for a good cached setlist (has actual songs)
+  const cached = setlistCache[cacheKey];
+  if (cached && !cached.notFound && !cached.error && (cached.songs || []).length > 0) {
+    return renderSetlist(cached, c);
+  }
+
+  // Nothing useful cached — try fetching via Apps Script
+  if (!scriptUrl) {
+    document.getElementById('modal-body').innerHTML =
+      '<div class="modal-loading">Connect your Google Sheet to load setlists.</div>';
+    return;
+  }
+
+  document.getElementById('modal-body').innerHTML =
+    '<div class="modal-loading"><div class="spinner"></div><br>Fetching setlist…</div>';
+
+  try {
+    const params = new URLSearchParams({
+      action: 'fetchOne',
+      artist: c.artist,
+      date:   c.date,
+      venue:  c.venue  || '',
+      city:   c.city   || '',
+    });
+    const resp = await fetch(scriptUrl + '?' + params.toString(), { redirect: 'follow' });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const data = await resp.json();
+
+    if (data.found && data.cacheKey) {
+      // Reload cache from sheet to get the full setlist data
+      await reloadSetlistCache();
+      const sl = setlistCache[data.cacheKey] || setlistCache[cacheKey];
+      if (sl) {
+        renderSetlist(sl, c);
+        renderConcerts();
+        renderSongs();
+        return;
+      }
+    }
+    document.getElementById('modal-body').innerHTML =
+      '<div class="modal-loading">No setlist found on setlist.fm for this show.</div>';
+  } catch(e) {
+    document.getElementById('modal-body').innerHTML =
+      '<div class="modal-loading" style="color:var(--coral)">Error: ' + e.message + '</div>';
+  }
+}
+
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzQe3IT00j2Ndn6cLINNahrduNljqfyTeOuN2gXJzdDN57J8Q0ynw6QnwGOrKn3AGMMGw/exec';
+
+// All setlist.fm API calls go through the Apps Script (server-side, no CORS issues)
+async function callSetlistAPI(endpoint, queryParams) {
+  const query = Object.entries(queryParams)
+    .map(([k,v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v))
+    .join('&');
+  const url = SCRIPT_URL + '?action=setlist&endpoint=' + encodeURIComponent(endpoint) + '&query=' + encodeURIComponent(query);
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error('Script HTTP ' + resp.status);
+    const wrapper = await resp.json();
+    if (wrapper.error) throw new Error(wrapper.error);
+    if (wrapper.code && wrapper.code !== 200) throw new Error('setlist.fm returned ' + wrapper.code);
+    return JSON.parse(wrapper.body);
+  } catch(e) {
+    console.warn('callSetlistAPI failed for ' + endpoint + ':', e.message);
+    return null;
+  }
+}
+
+async function fetchSetlist(concert) {
+  // Format date as dd-MM-yyyy for setlist.fm
+  let fmDate = '';
+  try {
+    const d = new Date(concert.date);
+    fmDate = String(d.getDate()).padStart(2,'0') + '-' +
+             String(d.getMonth()+1).padStart(2,'0') + '-' +
+             d.getFullYear();
+  } catch(e) { fmDate = concert.date; }
+
+  let bestMatch = null;
+  let bestScore = -1;
+
+  // Strategy 1: artist name + exact date
+  const data1 = await callSetlistAPI('search/setlists', { artistName: concert.artist, date: fmDate, p: '1' });
+  if (data1 && data1.setlist) {
+    for (const s of data1.setlist) {
+      const score = scoreMatch(s, concert);
+      if (score > bestScore) { bestScore = score; bestMatch = s; }
+    }
+  }
+
+  // Strategy 2: if no confident match yet, try artist name only and score all results
+  if (bestScore < 8) {
+    const data2 = await callSetlistAPI('search/setlists', { artistName: concert.artist, p: '1' });
+    if (data2 && data2.setlist) {
+      for (const s of data2.setlist) {
+        const score = scoreMatch(s, concert);
+        if (score > bestScore) { bestScore = score; bestMatch = s; }
+      }
+    }
+  }
+
+  // Strategy 3: strip leading "The " and retry with date
+  if (bestScore < 8 && /^the\s+/i.test(concert.artist)) {
+    const stripped = concert.artist.replace(/^the\s+/i, '');
+    const data3 = await callSetlistAPI('search/setlists', { artistName: stripped, date: fmDate, p: '1' });
+    if (data3 && data3.setlist) {
+      for (const s of data3.setlist) {
+        const score = scoreMatch(s, concert);
+        if (score > bestScore) { bestScore = score; bestMatch = s; }
+      }
+    }
+  }
+
+  if (!bestMatch || bestScore < 2) {
+    return { songs:[], encores:[], support:[], notFound:true,
+             debug:'No match (score ' + bestScore + ') for: ' + concert.artist + ' on ' + fmDate };
+  }
+
+  const songs = [], encores = [], support = [];
+  (bestMatch.sets?.set || []).forEach(set => {
+    const target = set.encore ? encores : songs;
+    (set.song || []).forEach(song => target.push({ name: song.name, cover: song.cover?.name || null }));
+  });
+
+  // Support acts: other setlists at same venue on same date
+  try {
+    const venueId = bestMatch.venue?.id;
+    if (venueId) {
+      const evData = await callSetlistAPI('venue/' + venueId + '/setlists', { p: '1' });
+      if (evData && evData.setlist) {
+        evData.setlist
+          .filter(s => s.id !== bestMatch.id && s.eventDate === bestMatch.eventDate)
+          .forEach(s => { if (s.artist?.name) support.push(s.artist.name); });
+      }
+    }
+  } catch(e) {}
+
+  return {
+    songs, encores, support,
+    artist:    bestMatch.artist?.name    || concert.artist,
+    venueName: bestMatch.venue?.name     || concert.venue,
+    city:      bestMatch.venue?.city?.name || concert.city,
+    country:   bestMatch.venue?.city?.country?.name || concert.country,
+    score:     bestScore,
+  };
+}
+
+function scoreMatch(s, concert) {
+  let score = 0;
+  const sa = (s.artist?.name || '').toLowerCase().replace(/^the\s+/,'');
+  const ca = (concert.artist || '').toLowerCase().replace(/^the\s+/i,'');
+  if (sa === ca) score += 10;
+  else if (sa.includes(ca) || ca.includes(sa)) score += 5;
+
+  if (s.eventDate) {
+    const p = s.eventDate.split('-');
+    const sISO = p[2] + '-' + p[1] + '-' + p[0];
+    if (sISO === concert.date) score += 8;
+  }
+
+  const sv = (s.venue?.name || '').toLowerCase();
+  const cv = (concert.venue || '').toLowerCase();
+  if (sv && cv) {
+    if (sv === cv) score += 5;
+    else if (sv.includes(cv.split(' ')[0]) || cv.includes(sv.split(' ')[0])) score += 2;
+  }
+
+  const sc = (s.venue?.city?.name || '').toLowerCase();
+  const cc = (concert.city || '').toLowerCase();
+  if (sc && cc && (sc === cc || sc.includes(cc) || cc.includes(sc))) score += 3;
+
+  return score;
+}
+
+
+
+function renderSetlist(sl, concert) {
+  if (!sl) { document.getElementById('modal-body').innerHTML = `<div class="modal-loading">No data.</div>`; return; }
+  if (sl.notFound) { document.getElementById('modal-body').innerHTML = `<div class="modal-loading">No setlist found on setlist.fm for this show.</div>`; return; }
+  if (sl.error) { document.getElementById('modal-body').innerHTML = `<div class="modal-loading" style="color:var(--coral)">${sl.error}</div>`; return; }
+
+  // Build song frequency for "times heard" badge
+  const songFreq = {};
+  Object.entries(setlistCache).forEach(([key, s]) => {
+    if (!s) return;
+    [...(s.songs||[]),...(s.encores||[])].forEach(song => {
+      songFreq[song.name] = (songFreq[song.name] || 0) + 1;
+    });
+  });
+
+  const songRow = (song, i) => `
+    <div class="song-row">
+      <span class="song-num">${i+1}</span>
+      <span class="song-name">${song.name}${song.cover ? ` <span class="song-cover">(${song.cover})</span>` : ''}</span>
+      ${songFreq[song.name] > 1 ? `<span class="song-times">${songFreq[song.name]}×</span>` : ''}
+    </div>
+  `;
+
+  let html = '';
+
+  if (sl.support && sl.support.length) {
+    html += `<div class="setlist-section">
+      <div class="setlist-section-title">Opening / support</div>
+      ${sl.support.map(a => `<div class="opening-act"><span class="opening-act-label">Support</span><span>${a}</span></div>`).join('')}
+    </div>`;
+  }
+
+  if (sl.songs && sl.songs.length) {
+    html += `<div class="setlist-section">
+      <div class="setlist-section-title">Set · ${sl.songs.length} songs</div>
+      ${sl.songs.map(songRow).join('')}
+    </div>`;
+  }
+
+  if (sl.encores && sl.encores.length) {
+    html += `<div class="setlist-section">
+      <div class="setlist-section-title">Encore · ${sl.encores.length} songs</div>
+      ${sl.encores.map(songRow).join('')}
+    </div>`;
+  }
+
+  if (!html) html = '<div class="modal-loading">Setlist found but no songs listed yet.</div>';
+  document.getElementById('modal-body').innerHTML = html;
+}
+
+function closeModal() {
+  document.getElementById('modal').classList.remove('open');
+}
+
+document.getElementById('modal').addEventListener('click', e => { if (e.target === e.currentTarget) closeModal(); });
+
+// ─── Bulk Enrichment ──────────────────────────────────────────────────────────
+async function enrichAll() {
+  if (!apiKey) return setStatus('enrich-status','err','Set API key first');
+  // Clear previously failed/empty entries so they get re-fetched
+  concerts.forEach((c,i) => {
+    const key = getCacheKey(c,i);
+    const sl = setlistCache[key];
+    if (sl && (sl.notFound || sl.error || (sl.songs||[]).length === 0)) {
+      delete setlistCache[key];
+    }
+  });
+  const toFetch = concerts.filter((c,i) => !setlistCache[getCacheKey(c,i)]);
+  if (!toFetch.length) return setStatus('enrich-status','ok','All setlists already loaded');
+  setStatus('enrich-status','loading',`Fetching 0/${toFetch.length}…`);
+  let done = 0;
+  for (let i = 0; i < concerts.length; i++) {
+    const c = concerts[i];
+    const key = getCacheKey(c, i);
+    if (setlistCache[key]) continue;
+    const sl = await fetchSetlist(c);
+    setlistCache[key] = sl;
+    done++;
+    setStatus('enrich-status','loading',`Fetching ${done}/${toFetch.length}…`);
+    await sleep(300); // rate limit
+  }
+  const goodCount = Object.values(setlistCache).filter(s => s && (s.songs||[]).length > 0).length;
+  const badCount  = Object.values(setlistCache).filter(s => s && (s.notFound || s.error)).length;
+  const msg = done + ' fetched — ' + goodCount + ' with songs, ' + badCount + ' not found';
+  setStatus('enrich-status', goodCount > 0 ? 'ok' : 'err', msg);
+  if (badCount > 0) showDiagnostics();
+  renderConcerts();
+  renderSongs();
+  // Kick off MusicBrainz genre lookups for all unique artists
+  var uniqueArtists = [...new Set(concerts.map(function(c,i){ return getDisplayArtist(c,i); }))];
+  uniqueArtists.forEach(function(a) { queueMBLookup(a); });
+  // Save fetched setlists back to Google Sheet for persistence
+  if (scriptUrl && goodCount > 0) saveSetlistsToSheet();
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+
+// ─── Years View ──────────────────────────────────────────────────────────────
+let activeYear = null;
+
+// Artist genre cache (MusicBrainz)
+var genreCache = {};
+
+// Capitalise first letter of each word
+function titleCase(str) {
+  return str.replace(/\b\w/g, function(c) { return c.toUpperCase(); });
+}
+
+// MusicBrainz tag -> normalised genre label
+var MB_TAG_MAP = {
+  'alternative rock': 'Alternative Rock', 'indie rock': 'Indie Rock',
+  'indie pop': 'Indie Pop', 'indie folk': 'Indie Folk',
+  'folk rock': 'Folk Rock', 'folk': 'Folk', 'folk pop': 'Folk',
+  'singer-songwriter': 'Folk', 'americana': 'Folk Rock',
+  'psychedelic rock': 'Psychedelic Rock', 'psychedelic pop': 'Psychedelic Rock',
+  'shoegaze': 'Shoegaze', 'dream pop': 'Dream Pop',
+  'post-punk': 'Post-Punk', 'post-punk revival': 'Post-Punk',
+  'new wave': 'New Wave', 'post-rock': 'Post-Rock',
+  'pop': 'Pop', 'synth-pop': 'Synth-Pop', 'electropop': 'Synth-Pop',
+  'pop rock': 'Pop Rock', 'power pop': 'Pop Rock',
+  'rock': 'Rock', 'classic rock': 'Classic Rock', 'hard rock': 'Hard Rock',
+  'punk rock': 'Punk', 'punk': 'Punk', 'emo': 'Emo',
+  'grunge': 'Grunge', 'noise rock': 'Noise Rock',
+  'metal': 'Metal', 'heavy metal': 'Metal', 'indie metal': 'Metal',
+  'electronic': 'Electronic', 'electronica': 'Electronic',
+  'ambient': 'Electronic', 'techno': 'Electronic', 'house': 'Electronic',
+  'dance': 'Electronic', 'idm': 'Electronic',
+  'hip hop': 'Hip-Hop', 'hip-hop': 'Hip-Hop', 'rap': 'Hip-Hop',
+  'r&b': 'R&B', 'soul': 'R&B', 'rhythm and blues': 'R&B',
+  'jazz': 'Jazz', 'blues': 'Blues', 'country': 'Country',
+  'jam band': 'Jam Band', 'progressive rock': 'Prog Rock',
+  'chamber pop': 'Indie Pop', 'baroque pop': 'Indie Pop',
+};
+
+// Fetch genre from MusicBrainz for an artist name
+// Uses a debounced queue so we never hammer the API
+var mbQueue = [];
+var mbRunning = false;
+
+function queueMBLookup(artistName) {
+  if (genreCache[artistName] !== undefined) return; // already cached
+  if (mbQueue.indexOf(artistName) !== -1) return;   // already queued
+  genreCache[artistName] = null; // mark as in-flight
+  mbQueue.push(artistName);
+  if (!mbRunning) runMBQueue();
+}
+
+async function runMBQueue() {
+  mbRunning = true;
+  while (mbQueue.length > 0) {
+    var name = mbQueue.shift();
+    try {
+      await fetchMBGenre(name);
+    } catch(e) {}
+    await sleep(300); // MusicBrainz rate limit: max ~3 req/s
+  }
+  mbRunning = false;
+}
+
+async function fetchMBGenre(artistName) {
+  var encoded = encodeURIComponent('"' + artistName + '"');
+  var url = 'https://musicbrainz.org/ws/2/artist/?query=artist:' + encoded + '&limit=1&fmt=json';
+  var resp = await fetch(url, {
+    headers: { 'User-Agent': 'ConcertTracker/1.0 (personal use)' }
+  });
+  if (!resp.ok) return;
+  var data = await resp.json();
+  var artists = data.artists;
+  if (!artists || !artists.length) return;
+
+  var artist = artists[0];
+  var tags = artist.tags || [];
+  // Sort by vote count descending
+  tags.sort(function(a, b) { return (b.count || 0) - (a.count || 0); });
+
+  // Find the best matching genre tag
+  var genre = null;
+  for (var i = 0; i < tags.length; i++) {
+    var t = tags[i].name.toLowerCase();
+    if (MB_TAG_MAP[t]) {
+      genre = MB_TAG_MAP[t];
+      break;
+    }
+  }
+  // Fallback: use highest-voted tag, title-cased
+  if (!genre && tags.length > 0) {
+    genre = titleCase(tags[0].name);
+  }
+  if (genre) {
+    genreCache[artistName] = genre;
+    // Re-render years view if it's visible
+    var yv = document.getElementById('view-years');
+    if (yv && yv.classList.contains('active')) renderYearData(activeYear);
+  }
+}
+
+const GENRE_MAP = {
+  'Radiohead': 'Alternative Rock', 'Arctic Monkeys': 'Indie Rock', 'The National': 'Indie Rock',
+  'LCD Soundsystem': 'Indie/Electronic', 'Pixies': 'Alternative Rock', 'Pavement': 'Indie Rock',
+  'Wilco': 'Indie Rock', 'Modest Mouse': 'Indie Rock', 'Built to Spill': 'Indie Rock',
+  'Interpol': 'Post-Punk', 'The Strokes': 'Indie Rock', 'Yeah Yeah Yeahs': 'Indie Rock',
+  'Vampire Weekend': 'Indie Pop', 'Tame Impala': 'Psychedelic Rock', 'Beach House': 'Dream Pop',
+  'Bon Iver': 'Indie Folk', 'Fleet Foxes': 'Indie Folk', 'Iron & Wine': 'Folk',
+  'Nick Cave': 'Post-Punk', 'Nick Cave and the Bad Seeds': 'Post-Punk',
+  'The War on Drugs': 'Indie Rock', 'Spoon': 'Indie Rock', 'Real Estate': 'Indie Pop',
+  'Taylor Swift': 'Pop', 'Billie Eilish': 'Pop', 'Olivia Rodrigo': 'Pop',
+  'Lorde': 'Indie Pop', 'Lana Del Rey': 'Indie Pop', 'Phoebe Bridgers': 'Indie Folk',
+  'Mitski': 'Indie Rock', 'Japanese Breakfast': 'Indie Pop', 'Soccer Mommy': 'Indie Pop',
+  'Kendrick Lamar': 'Hip-Hop', 'Frank Ocean': 'R&B', 'SZA': 'R&B',
+  'Tyler, the Creator': 'Hip-Hop', 'Four Tet': 'Electronic', 'Caribou': 'Electronic',
+  'Hot Chip': 'Electronic', 'Bruce Springsteen': 'Rock', 'Pearl Jam': 'Grunge',
+  'Foo Fighters': 'Rock', 'Phish': 'Jam Band', 'Dead & Company': 'Jam Band',
+  'Bob Dylan': 'Folk Rock', 'Neil Young': 'Folk Rock',
+};
+
+const GENRE_COLORS = {
+  'Alternative Rock': '#7c6af7', 'Indie Rock': '#a78bfa', 'Indie Pop': '#c4b5fd',
+  'Indie Folk': '#34d399', 'Folk': '#6ee7b7', 'Folk Rock': '#059669', 'Americana': '#10b981',
+  'Psychedelic Rock': '#f59e0b', 'Dream Pop': '#fcd34d', 'Shoegaze': '#d97706',
+  'Post-Punk': '#f87171', 'Grunge': '#ef4444', 'Rock': '#fc8181', 'Classic Rock': '#fca5a5',
+  'Hard Rock': '#dc2626', 'Punk': '#b91c1c', 'Emo': '#991b1b', 'Noise Rock': '#7f1d1d',
+  'Pop': '#60a5fa', 'Synth-Pop': '#93c5fd', 'Pop Rock': '#3b82f6',
+  'New Wave': '#818cf8', 'Post-Rock': '#6366f1', 'Prog Rock': '#4f46e5',
+  'Indie/Electronic': '#818cf8', 'Electronic': '#38bdf8',
+  'Hip-Hop': '#fb923c', 'R&B': '#f97316', 'Jazz': '#fdba74', 'Blues': '#ea580c',
+  'Jam Band': '#4ade80', 'Country': '#a3e635', 'Metal': '#9ca3af',
+  'Other': '#4b5563',
+};
+
+function getGenre(artistName) {
+  if (!artistName) return 'Other';
+  // 1. MusicBrainz cache (live lookup result)
+  if (genreCache[artistName]) return genreCache[artistName];
+  // 2. Queue a MusicBrainz lookup for next render cycle
+  queueMBLookup(artistName);
+  // 3. Hardcoded fallback map while we wait
+  if (GENRE_MAP[artistName]) return GENRE_MAP[artistName];
+  var lower = artistName.toLowerCase();
+  for (var k in GENRE_MAP) {
+    if (k.toLowerCase() === lower) return GENRE_MAP[k];
+  }
+  return 'Other';
+}
+
+
+
+function getAllYears() {
+  var years = [];
+  var seen = {};
+  concerts.forEach(function(c) {
+    var y = parseYear(c.date);
+    if (y && !seen[y]) { seen[y] = true; years.push(y); }
+  });
+  return years.sort().reverse();
+}
+
+function getConcertsForYear(year) {
+  return concerts.map(function(c, i) { return {c: c, i: i}; })
+    .filter(function(e) { return parseYear(e.c.date) === year; });
+}
+
+function renderYearsView() {
+  var years = getAllYears();
+  if (!years.length) {
+    document.getElementById('yr-tabs').innerHTML = '';
+    document.getElementById('yr-summary-stats').innerHTML = '<div class="yr-empty">Load your concert data to see yearly stats.</div>';
+    return;
+  }
+  if (!activeYear || (activeYear !== 'all' && years.indexOf(activeYear) === -1)) {
+    activeYear = years[0];
+  }
+
+  var tabHtml = years.map(function(y) {
+    return '<button class="yr-tab ' + (y === activeYear ? 'active' : '') + '" onclick="setActiveYear(\'' + y + '\')">' + y + '</button>';
+  }).join('') + '<button class="yr-tab ' + (activeYear === 'all' ? 'active' : '') + '" onclick="setActiveYear(\'all\')" style="margin-left:8px">All time</button>';
+  document.getElementById('yr-tabs').innerHTML = tabHtml;
+
+  renderYearData(activeYear);
+}
+
+function setActiveYear(year) {
+  activeYear = year;
+  renderYearsView();
+}
+
+function renderYearData(year) {
+  var entries = year === 'all'
+    ? concerts.map(function(c, i) { return {c: c, i: i}; })
+    : getConcertsForYear(year);
+
+  var total = entries.length;
+  var artistSet = {}, citySet = {}, venueSet = {};
+  entries.forEach(function(e) {
+    artistSet[getDisplayArtist(e.c, e.i)] = 1;
+    var city = getDisplayCity(e.c, e.i);
+    if (city) citySet[city] = 1;
+    var v = getDisplayVenue(e.c, e.i);
+    if (v) venueSet[v] = 1;
+  });
+
+  document.getElementById('yr-summary-stats').innerHTML =
+    stat(total, year === 'all' ? 'Total shows' : year + ' shows', '') +
+    stat(Object.keys(artistSet).length, 'Artists', '') +
+    stat(Object.keys(venueSet).length, 'Venues', '') +
+    stat(Object.keys(citySet).length, 'Cities', '');
+
+  // Artists
+  var artistMap = {};
+  entries.forEach(function(e) {
+    var name = getDisplayArtist(e.c, e.i);
+    artistMap[name] = (artistMap[name] || 0) + 1;
+  });
+  var artistList = Object.entries(artistMap).sort(function(a,b) { return b[1]-a[1]; });
+  var maxA = artistList.length ? artistList[0][1] : 1;
+  document.getElementById('yr-artist-count').textContent = artistList.length + ' artists';
+  document.getElementById('yr-artists-tbody').innerHTML = artistList.map(function(entry, i) {
+    var name = entry[0], count = entry[1];
+    var rankClass = i < 3 ? 'rank-' + (i+1) : '';
+    return '<tr style="cursor:pointer" onclick="filterByArtist(\'' + esc(name) + '\')">' +
+      '<td class="rank ' + rankClass + '">' + (i+1) + '</td>' +
+      '<td style="font-weight:500">' + name + '</td>' +
+      '<td><div class="bar-wrap"><div class="bar"><div class="bar-fill" style="width:' + Math.round(count/maxA*100) + '%"></div></div><span class="count-badge">' + count + '</span></div></td>' +
+      '<td></td></tr>';
+  }).join('');
+
+  // Venues
+  var venueMap = {};
+  entries.forEach(function(e) {
+    var v = getDisplayVenue(e.c, e.i);
+    var city = getDisplayCity(e.c, e.i);
+    var key = v + '|' + city;
+    if (!venueMap[key]) venueMap[key] = { venue: v, city: city, count: 0 };
+    venueMap[key].count++;
+  });
+  var venueList = Object.values(venueMap).sort(function(a,b) { return b.count-a.count; });
+  var maxV = venueList.length ? venueList[0].count : 1;
+  document.getElementById('yr-venue-count').textContent = venueList.length + ' venues';
+  document.getElementById('yr-venues-tbody').innerHTML = venueList.map(function(v, i) {
+    var rankClass = i < 3 ? 'rank-' + (i+1) : '';
+    return '<tr style="cursor:pointer" onclick="filterByVenue(\'' + esc(v.venue) + '\')">' +
+      '<td class="rank ' + rankClass + '">' + (i+1) + '</td>' +
+      '<td style="font-weight:500">' + v.venue + '</td>' +
+      '<td style="color:var(--muted);font-size:12px">' + v.city + '</td>' +
+      '<td><div class="bar-wrap"><div class="bar"><div class="bar-fill" style="width:' + Math.round(v.count/maxV*100) + '%"></div></div><span class="count-badge">' + v.count + '</span></div></td>' +
+      '<td></td></tr>';
+  }).join('');
+
+  // Cities
+  var cityMap = {};
+  entries.forEach(function(e) {
+    var city = getDisplayCity(e.c, e.i);
+    if (!city) return;
+    cityMap[city] = (cityMap[city] || 0) + 1;
+  });
+  var cityList = Object.entries(cityMap).sort(function(a,b) { return b[1]-a[1]; });
+  var maxC = cityList.length ? cityList[0][1] : 1;
+  document.getElementById('yr-city-count').textContent = cityList.length + ' cities';
+  document.getElementById('yr-cities-tbody').innerHTML = cityList.map(function(entry, i) {
+    var city = entry[0], count = entry[1];
+    var rankClass = i < 3 ? 'rank-' + (i+1) : '';
+    return '<tr style="cursor:pointer" onclick="filterByCity(\'' + esc(city) + '\')">' +
+      '<td class="rank ' + rankClass + '">' + (i+1) + '</td>' +
+      '<td style="font-weight:500">' + city + '</td>' +
+      '<td><div class="bar-wrap"><div class="bar"><div class="bar-fill" style="width:' + Math.round(count/maxC*100) + '%"></div></div><span class="count-badge">' + count + '</span></div></td>' +
+      '<td></td></tr>';
+  }).join('');
+
+  // Genres
+  var genreMap = {};
+  entries.forEach(function(e) {
+    var genre = getGenre(getDisplayArtist(e.c, e.i));
+    genreMap[genre] = (genreMap[genre] || 0) + 1;
+  });
+  var genreList = Object.entries(genreMap).sort(function(a,b) { return b[1]-a[1]; });
+  var maxG = genreList.length ? genreList[0][1] : 1;
+  document.getElementById('yr-genre-count').textContent = genreList.length + ' genres';
+  document.getElementById('yr-genres-tbody').innerHTML = genreList.map(function(entry, i) {
+    var genre = entry[0], count = entry[1];
+    var color = GENRE_COLORS[genre] || GENRE_COLORS['Other'];
+    return '<tr>' +
+      '<td class="rank">' + (i+1) + '</td>' +
+      '<td style="font-weight:500"><span class="genre-dot" style="background:' + color + '"></span>' + genre + '</td>' +
+      '<td><div class="bar-wrap"><div class="bar"><div class="bar-fill" style="width:' + Math.round(count/maxG*100) + '%;background:' + color + '"></div></div><span class="count-badge">' + count + '</span></div></td>' +
+      '<td></td></tr>';
+  }).join('');
+
+  // Monthly timeline
+  var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var monthMap = {};
+  months.forEach(function(m) { monthMap[m] = 0; });
+  entries.forEach(function(e) {
+    try {
+      var d = new Date(e.c.date);
+      if (!isNaN(d)) monthMap[months[d.getMonth()]]++;
+    } catch(ex) {}
+  });
+  var maxM = Math.max.apply(null, Object.values(monthMap).concat([1]));
+  document.getElementById('yr-timeline').innerHTML = months.map(function(m) {
+    var count = monthMap[m];
+    return '<div class="yr-bar-month">' +
+      '<span class="yr-bar-month-label">' + m + '</span>' +
+      '<div class="yr-bar-wrap" title="' + count + ' show' + (count !== 1 ? 's' : '') + '">' +
+        '<div class="yr-bar-inner" style="width:' + Math.round(count/maxM*100) + '%"></div>' +
+      '</div>' +
+      '<span class="yr-bar-count">' + (count || '') + '</span>' +
+    '</div>';
+  }).join('');
+}
+
+// Safe escape for onclick attribute values
+function esc(s) { return encodeURIComponent(s || ''); }
+
+// Navigation helpers used by year table rows
+function filterByArtist(name) {
+  switchView('concerts');
+  document.getElementById('concert-artist-filter').value = decodeURIComponent(name);
+  renderConcerts();
+}
+function filterByVenue(name) {
+  switchView('concerts');
+  document.getElementById('concert-search').value = decodeURIComponent(name);
+  renderConcerts();
+}
+function filterByCity(name) {
+  switchView('concerts');
+  document.getElementById('concert-search').value = decodeURIComponent(name);
+  renderConcerts();
+}
+
+
+
+
+function showDiagnostics() {
+  const rows = concerts.map((c, i) => {
+    const key = getCacheKey(c, i);
+    const sl = setlistCache[key];
+    let status, detail;
+    if (!sl) { status = 'not fetched'; detail = ''; }
+    else if (sl.error) { status = 'error'; detail = sl.error; }
+    else if (sl.notFound) { status = 'not found'; detail = sl.debug || ''; }
+    else if ((sl.songs||[]).length === 0) { status = 'empty setlist'; detail = ''; }
+    else { status = (sl.songs.length + (sl.encores||[]).length) + ' songs'; detail = sl.artist || ''; }
+    return { date: c.date, artist: c.artist, status, detail };
+  });
+
+  const notFound = rows.filter(r => r.status === 'not found' || r.status === 'error');
+  const found    = rows.filter(r => r.status.includes('songs'));
+
+  let html = '<div style="font-size:11px;margin-top:8px">';
+  html += '<div style="color:var(--green);margin-bottom:6px">' + found.length + ' shows matched</div>';
+  if (notFound.length) {
+    html += '<div style="color:var(--coral);margin-bottom:4px">' + notFound.length + ' not matched:</div>';
+    html += notFound.slice(0,8).map(r =>
+      '<div style="color:var(--muted);margin-bottom:2px;font-family:var(--mono)">' +
+      r.date + ' · ' + r.artist + '</div>'
+    ).join('');
+    if (notFound.length > 8) html += '<div style="color:var(--muted)">...and ' + (notFound.length-8) + ' more</div>';
+    html += '<div style="color:var(--amber);margin-top:6px;line-height:1.5">Tip: Check that artist names in your sheet match how they appear on setlist.fm exactly.</div>';
+  }
+  html += '</div>';
+  document.getElementById('enrich-status').innerHTML += html;
+  document.getElementById('enrich-status').style.display = 'block';
+}
+
+
+async function saveSetlistsToSheet() {
+  if (!scriptUrl) return;
+  const rows = [];
+  concerts.forEach((c, i) => {
+    const key = getCacheKey(c, i);
+    const sl = setlistCache[key];
+    if (!sl || sl.notFound || sl.error || !(sl.songs||[]).length) return;
+    rows.push({
+      cache_key:    key,
+      artist:       sl.artist    || '',
+      venue:        sl.venueName || '',
+      city:         sl.city      || '',
+      country:      sl.country   || '',
+      songs_json:   JSON.stringify(sl.songs   || []),
+      encores_json: JSON.stringify(sl.encores || []),
+      support_json: JSON.stringify(sl.support || []),
+      score:        sl.score || 0,
+      fetched_at:   new Date().toISOString(),
+    });
+  });
+  if (!rows.length) return;
+  try {
+    const url = scriptUrl + '?action=saveSetlists';
+    await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify(rows),
+      redirect: 'follow',
+    });
+    console.log('Saved ' + rows.length + ' setlists to sheet');
+  } catch(e) {
+    console.log('Could not save setlists to sheet:', e.message);
+  }
+}
+// ─── Navigation ───────────────────────────────────────────────────────────────
+function switchView(id) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById('view-'+id).classList.add('active');
+  document.querySelectorAll('.nav-btn').forEach(b => {
+    b.classList.toggle('active', b.textContent.toLowerCase().startsWith(id.slice(0,3)));
+  });
+  if (id === 'years') renderYearsView();
+  if (id === 'audit') renderAudit();
+  if (id === 'openers') renderOpeners();
+  if (id === 'map') { drawDots(); }
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function setStatus(id, type, msg) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.className = 'status ' + type;
+  el.textContent = msg;
+}
+
+// Search handlers
+document.getElementById('artist-search').addEventListener('input', renderArtists);
+
+// Init map after all JS is parsed
+initMap();
+document.getElementById('venue-search').addEventListener('input', renderVenues);
+document.getElementById('song-search').addEventListener('input', renderSongs);
+
+
+
+
+
+
+// ─── Add Show to Sheet ────────────────────────────────────────────────────────
+async function addShowToSheet() {
+  if (!scriptUrl) return setStatus('add-status','err','Connect your sheet first');
+
+  const date    = document.getElementById('add-date').value;
+  const artist  = document.getElementById('add-artist').value.trim();
+  const venue   = document.getElementById('add-venue').value.trim();
+  const city    = document.getElementById('add-city').value.trim();
+  const state   = document.getElementById('add-state').value.trim();
+  const country = document.getElementById('add-country').value.trim();
+  const notes   = document.getElementById('add-notes').value.trim();
+
+  if (!date)   return setStatus('add-status','err','Date is required');
+  if (!artist) return setStatus('add-status','err','Artist is required');
+
+  setStatus('add-status','loading','Adding to sheet...');
+
+  const params = new URLSearchParams({
+    action:  'addShow',
+    date:    date,
+    artist:  artist,
+    venue:   venue,
+    city:    city,
+    state:   state,
+    country: country,
+    notes:   notes
+  });
+
+  try {
+    const url = scriptUrl + '?' + params.toString();
+    const resp = await fetch(url, { redirect: 'follow' });
+    const text = await resp.text();
+    let data;
+    try { data = JSON.parse(text); }
+    catch(e) { throw new Error('Bad response: ' + text.slice(0, 100)); }
+    if (!resp.ok) throw new Error('HTTP ' + resp.status + ': ' + (data.message || text.slice(0,80)));
+    if (data.error) throw new Error(data.error);
+    if (!data.ok && !data.row) throw new Error('Script returned: ' + JSON.stringify(data).slice(0,100));
+
+    setStatus('add-status','ok','Added to sheet! Hit Sync to fetch the setlist.');
+
+    // Clear form
+    ['add-date','add-artist','add-venue','add-city','add-state','add-country','add-notes']
+      .forEach(id => { document.getElementById(id).value = ''; });
+
+    // Add to local concerts array immediately so UI updates
+    concerts.push({ date, artist, venue, city, state, country, notes });
+    processData();
+
+  } catch(e) {
+    setStatus('add-status','err', e.message);
+  }
+}
+
+// ─── Sync — fetch new setlists then reload everything ────────────────────────
+async function syncAll() {
+  if (!scriptUrl) return setStatus('sync-status','err','Connect your sheet first');
+
+  setStatus('sync-status','loading','Fetching new setlists... (may take a few minutes)');
+  document.getElementById('sync-btn').disabled = true;
+
+  try {
+    // Step 1: trigger fetchAll on the script
+    const resp = await fetch(scriptUrl + '?action=fetchAll', { redirect: 'follow' });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const data = await resp.json();
+
+    const msg = 'Fetched ' + (data.fetched || 0) +
+                ', skipped ' + (data.skipped || 0) +
+                ', not found ' + (data.notFound || 0) +
+                '. Reloading...';
+    setStatus('sync-status','loading', msg);
+
+    // Step 2: reload everything from sheet
+    await fetchFromScript(scriptUrl);
+    setStatus('sync-status','ok', 'Done! ' + (data.fetched || 0) + ' new setlists fetched.');
+
+  } catch(e) {
+    // Script likely timed out — that's OK, data was saved, just reload
+    if (e.message.includes('Exceeded') || e.message.includes('timeout') || e.message.includes('504')) {
+      setStatus('sync-status','loading','Script timed out — reloading what was saved...');
+      await fetchFromScript(scriptUrl);
+      setStatus('sync-status','ok','Reloaded. Run Sync again to fetch remaining setlists.');
+    } else {
+      setStatus('sync-status','err', e.message);
+    }
+  }
+
+  document.getElementById('sync-btn').disabled = false;
+}
+
+
+// ─── Audit View ───────────────────────────────────────────────────────────────
+function renderAudit() {
+  const q      = (document.getElementById('audit-search').value || '').toLowerCase();
+  const filter = document.getElementById('audit-filter').value || 'all';
+
+  const rows = concerts.map(function(c, i) {
+    const key = getCacheKey(c, i);
+    const sl  = setlistCache[key];
+    let status, songCount;
+
+    if (!sl) {
+      status    = 'missing';
+      songCount = 0;
+    } else if (sl.error) {
+      status    = 'missing';
+      songCount = 0;
+    } else if (sl.notFound) {
+      status    = 'missing';
+      songCount = 0;
+    } else if (!sl.songs || sl.songs.length === 0) {
+      status    = 'empty';
+      songCount = 0;
+    } else {
+      status    = 'ok';
+      songCount = sl.songs.length + (sl.encores || []).length;
+    }
+
+    return {
+      idx:      i,
+      date:     c.date,
+      artist:   getDisplayArtist(c, i),
+      venue:    c.venue,
+      city:     c.city,
+      key:      key,
+      status:   status,
+      songs:    songCount,
+      sl:       sl,
+    };
+  });
+
+  // Counts
+  const total   = rows.length;
+  const ok      = rows.filter(function(r){ return r.status === 'ok'; }).length;
+  const empty   = rows.filter(function(r){ return r.status === 'empty'; }).length;
+  const missing = rows.filter(function(r){ return r.status === 'missing'; }).length;
+
+  // Update button counts
+  var countMap = { all: total, ok: ok, empty: empty, missing: missing };
+  ['all','ok','empty','missing'].forEach(function(f) {
+    var el = document.getElementById('afc-' + f);
+    if (el) el.textContent = countMap[f];
+  });
+
+  document.getElementById('audit-counts').textContent =
+    ok + ' ok  ·  ' + empty + ' empty  ·  ' + missing + ' missing';
+
+  // Sort by date descending
+  rows.sort(function(a, b) { return b.date.localeCompare(a.date); });
+
+  // Filter + search
+  const filtered = rows.filter(function(r) {
+    const matchFilter = filter === 'all' || r.status === filter;
+    const matchQ = !q ||
+      r.artist.toLowerCase().includes(q) ||
+      r.venue.toLowerCase().includes(q) ||
+      r.city.toLowerCase().includes(q) ||
+      r.date.includes(q);
+    return matchFilter && matchQ;
+  });
+
+  if (!filtered.length) {
+    document.getElementById('audit-tbody').innerHTML =
+      '<tr><td colspan="6" class="empty">No shows match this filter.</td></tr>';
+    return;
+  }
+
+  document.getElementById('audit-tbody').innerHTML = filtered.map(function(r) {
+    var badgeClass = r.status === 'ok' ? 'audit-ok' :
+                     r.status === 'empty' ? 'audit-empty' : 'audit-missing';
+    var badgeText  = r.status === 'ok'      ? r.songs + ' songs' :
+                     r.status === 'empty'   ? 'no songs' : 'no setlist';
+
+    var retryBtn = '<button class="audit-retry" onclick="showOverride(' + r.idx + ', this)" style="margin-right:4px">' +
+      (r.status !== 'ok' ? 'Retry' : 'Fix') + '</button>';
+
+    return '<tr>' +
+      '<td><span class="audit-badge ' + badgeClass + '">' + badgeText + '</span></td>' +
+      '<td style="font-family:var(--mono);font-size:11px">' + r.date + '</td>' +
+      '<td style="font-weight:500">' + r.artist + '</td>' +
+      '<td style="font-size:12px;color:var(--muted)">' + r.venue + (r.city ? ' · ' + r.city : '') + '</td>' +
+      '<td class="audit-key">' + r.key + '</td>' +
+      '<td>' + retryBtn + '</td>' +
+    '</tr>' +
+    '<tr class="audit-override-row" id="override-row-' + r.idx + '" style="display:none">' +
+      '<td colspan="6" style="padding:8px 12px;background:var(--bg3)">' +
+        '<div style="display:flex;gap:8px;align-items:center">' +
+          '<input class="inp" id="override-url-' + r.idx + '" placeholder="Paste setlist.fm URL — e.g. https://www.setlist.fm/setlist/grateful-dead/1977/..." style="flex:1;font-size:11px;height:30px">' +
+          '<button class="audit-retry" onclick="applyOverride(' + r.idx + ')">Apply</button>' +
+          '<button class="audit-retry" onclick="hideOverride(' + r.idx + ')">Cancel</button>' +
+        '</div>' +
+        '<div id="override-status-' + r.idx + '" style="font-size:11px;margin-top:4px;color:var(--muted)">Find the correct show on setlist.fm, copy its URL, and paste it here.</div>' +
+      '</td>' +
+    '</tr>';
+  }).join('');
+}
+
+async function retryFetch(idx) {
+  if (!scriptUrl) return alert('Connect your sheet first');
+  const c = concerts[idx];
+  if (!c) return;
+
+  // Remove from cache so it gets re-fetched
+  const key = getCacheKey(c, idx);
+  delete setlistCache[key];
+
+  const params = new URLSearchParams({
+    action: 'fetchOne',
+    artist: c.artist,
+    date:   c.date,
+    venue:  c.venue  || '',
+    city:   c.city   || '',
+  });
+
+  const tr = document.querySelector('#audit-tbody tr:nth-child(' + (idx+1) + ')');
+  const btn = event.target;
+  btn.textContent = '...';
+  btn.disabled = true;
+
+  try {
+    const resp = await fetch(scriptUrl + '?' + params.toString(), { redirect: 'follow' });
+    const data = await resp.json();
+    if (data.found && data.songs > 0) {
+      // Reload cache from sheet to get the new entry
+      await reloadSetlistCache();
+      renderAudit();
+    } else {
+      btn.textContent = 'Not found';
+      btn.disabled = false;
+    }
+  } catch(e) {
+    btn.textContent = 'Error';
+    btn.disabled = false;
+  }
+}
+
+async function reloadSetlistCache() {
+  if (!scriptUrl) return;
+  try {
+    const cr = await fetch(scriptUrl + '?action=setlists', { redirect: 'follow' });
+    if (!cr.ok) return;
+    const cacheData = await cr.json();
+    if (!Array.isArray(cacheData)) return;
+    setlistCache = {};
+    cacheData.forEach(function(row) {
+      if (!row.cache_key) return;
+      try {
+        setlistCache[row.cache_key] = {
+          artist:    row.artist    || '',
+          venueName: row.venue     || '',
+          city:      row.city      || '',
+          country:   row.country   || '',
+          songs:     JSON.parse(row.songs_json   || '[]'),
+          encores:   JSON.parse(row.encores_json || '[]'),
+          support:   JSON.parse(row.support_json || '[]'),
+          score:     Number(row.score || 0),
+        };
+      } catch(e) {}
+    });
+  } catch(e) {}
+}
+
+
+
+// ─── Setlist Override ─────────────────────────────────────────────────────────
+function showOverride(idx, btn) {
+  // Hide any other open override rows first
+  document.querySelectorAll('.audit-override-row').forEach(function(r) {
+    r.style.display = 'none';
+  });
+  var row = document.getElementById('override-row-' + idx);
+  if (row) row.style.display = '';
+  var input = document.getElementById('override-url-' + idx);
+  if (input) input.focus();
+}
+
+function hideOverride(idx) {
+  var row = document.getElementById('override-row-' + idx);
+  if (row) row.style.display = 'none';
+}
+
+async function applyOverride(idx) {
+  var input  = document.getElementById('override-url-' + idx);
+  var status = document.getElementById('override-status-' + idx);
+  var url    = (input ? input.value : '').trim();
+
+  if (!url) { if (status) status.textContent = 'Please paste a setlist.fm URL.'; return; }
+  if (!scriptUrl) { if (status) status.textContent = 'Connect your sheet first.'; return; }
+
+  // Extract setlist ID from URL
+  // setlist.fm URLs look like: https://www.setlist.fm/setlist/grateful-dead/1977/barton-hall-ithaca-ny-63de4a5f.html
+  // The ID is the last hex segment before .html
+  var match = url.match(/([0-9a-f]{6,10})\.html/i);
+  if (!match) {
+    if (status) status.textContent = 'Could not find a setlist ID in that URL. Make sure it links to a specific show, not an artist page.';
+    return;
+  }
+  var setlistId = match[1];
+
+  if (status) status.textContent = 'Fetching setlist ' + setlistId + '...';
+
+  try {
+    var params = new URLSearchParams({
+      action:    'fetchById',
+      setlistId: setlistId,
+      concertIdx: idx,
+    });
+    var fetchUrl = scriptUrl + '?' + params.toString();
+    console.log('Calling:', fetchUrl);
+    var resp = await fetch(fetchUrl, { redirect: 'follow' });
+    var rawText = await resp.text();
+    console.log('Raw response:', rawText.slice(0, 200));
+    if (!resp.ok) throw new Error('HTTP ' + resp.status + ': ' + rawText.slice(0, 100));
+    var data;
+    try { data = JSON.parse(rawText); }
+    catch(e2) { throw new Error('Bad JSON response: ' + rawText.slice(0, 100)); }
+
+    if (data.error) throw new Error(data.error);
+    if (!data.found) throw new Error('Not found. Script response: ' + JSON.stringify(data));
+
+    // Reload cache and refresh
+    await reloadSetlistCache();
+    renderAudit();
+    renderSongs();
+    renderConcerts();
+    hideOverride(idx);
+
+    if (status) status.textContent = 'Done — ' + (data.songs || 0) + ' songs loaded.';
+
+  } catch(e) {
+    if (status) {
+      status.style.color = 'var(--coral)';
+      status.textContent = 'Error: ' + e.message;
+    }
+  }
+}
+
+
+// ─── Song History Modal ───────────────────────────────────────────────────────
+function openSongHistory(songName, artist) {
+  // Collect every concert where this song appears
+  var appearances = [];
+
+  concerts.forEach(function(c, i) {
+    var sl = setlistCache[getCacheKey(c, i)];
+    if (!sl) return;
+    var all = (sl.songs || []).concat(sl.encores || []);
+    var inSet    = false;
+    var isEncore = false;
+    for (var j = 0; j < all.length; j++) {
+      if (all[j].name && all[j].name.toLowerCase() === songName.toLowerCase()) {
+        inSet = true;
+        isEncore = j >= (sl.songs || []).length;
+        break;
+      }
+    }
+    if (!inSet) return;
+    appearances.push({
+      date:    c.date,
+      artist:  getDisplayArtist(c, i),
+      venue:   getDisplayVenue(c, i),
+      city:    getDisplayCity(c, i),
+      encore:  isEncore,
+      idx:     i,
+    });
+  });
+
+  // Sort by date descending
+  appearances.sort(function(a, b) { return b.date.localeCompare(a.date); });
+
+  // Build modal content
+  document.getElementById('modal-title').textContent = songName;
+  document.getElementById('modal-sub').textContent =
+    artist + ' \u00b7 ' + appearances.length + ' time' + (appearances.length !== 1 ? 's' : '') + ' heard live';
+  document.getElementById('modal').classList.add('open');
+
+  if (!appearances.length) {
+    document.getElementById('modal-body').innerHTML =
+      '<div class="modal-loading">No performances found in loaded setlists.</div>';
+    return;
+  }
+
+  var rows = appearances.map(function(a, i) {
+    return '<div class="song-row" style="cursor:pointer" onclick="closeModal();openConcert(' + a.idx + ')">' +
+      '<span class="song-num">' + (i+1) + '</span>' +
+      '<div style="flex:1">' +
+        '<div style="font-size:13px;font-weight:500">' + formatDate(a.date) + '</div>' +
+        '<div style="font-size:11px;color:var(--muted);margin-top:2px">' +
+          a.venue + (a.city ? ' \u00b7 ' + a.city : '') +
+        '</div>' +
+      '</div>' +
+      (a.encore ? '<span style="font-size:10px;background:var(--amber-dim);color:var(--amber);border-radius:99px;padding:1px 7px">encore</span>' : '') +
+    '</div>';
+  }).join('');
+
+  document.getElementById('modal-body').innerHTML =
+    '<div class="setlist-section">' + rows + '</div>';
+}
+
+
+// ─── Openers View ─────────────────────────────────────────────────────────────
+function renderOpeners() {
+  // Build lookup of every artist+date combo already in the Concerts tab
+  var inConcerts = {};
+  concerts.forEach(function(c) {
+    var key = c.date + '|||' + c.artist.toLowerCase().trim();
+    inConcerts[key] = true;
+  });
+
+  // For each cached setlist, check support acts AND other artists found at
+  // the same venue+date — compare against inConcerts to find net-new ones
+  var newOpeners = [];
+  var seen = {};
+
+  concerts.forEach(function(c, i) {
+    var sl = setlistCache[getCacheKey(c, i)];
+    if (!sl) return;
+
+    var support = sl.support || [];
+    support.forEach(function(supportArtist) {
+      if (!supportArtist || !supportArtist.trim()) return;
+      var concertKey = c.date + '|||' + supportArtist.toLowerCase().trim();
+      var dedupKey   = c.date + '|||' + supportArtist + '|||' + getDisplayVenue(c, i);
+      if (inConcerts[concertKey]) return;  // already in your sheet
+      if (seen[dedupKey]) return;          // already in this list
+      seen[dedupKey] = true;
+      newOpeners.push({
+        date:      c.date,
+        opener:    supportArtist,
+        headliner: getDisplayArtist(c, i),
+        venue:     getDisplayVenue(c, i),
+        city:      getDisplayCity(c, i),
+        state:     c.state   || '',
+        country:   c.country || '',
+        concertIdx: i,
+      });
+    });
+  });
+
+  // Sort by date descending
+  newOpeners.sort(function(a, b) { return b.date.localeCompare(a.date); });
+
+  window._pendingOpeners = newOpeners;
+
+  document.getElementById('openers-count').textContent =
+    newOpeners.length + ' net-new opener' + (newOpeners.length !== 1 ? 's' : '');
+
+  if (!newOpeners.length) {
+    document.getElementById('openers-tbody').innerHTML =
+      '<tr><td colspan="5" class="empty">No unrecorded openers found. ' +
+      'This pulls from setlist.fm support act data in your cached setlists. ' +
+      'Make sure setlists are loaded — the more shows fetched, the more openers may appear.</td></tr>';
+    return;
+  }
+
+  document.getElementById('openers-tbody').innerHTML = newOpeners.map(function(o, i) {
+    return '<tr id="opener-row-' + i + '">' +
+      '<td style="font-family:var(--mono);font-size:11px;white-space:nowrap">' + o.date + '</td>' +
+      '<td style="font-weight:500">' + o.opener + '</td>' +
+      '<td style="color:var(--muted);font-size:12px">with ' + o.headliner + '</td>' +
+      '<td style="color:var(--muted);font-size:12px">' + o.venue + (o.city ? ' \u00b7 ' + o.city : '') + '</td>' +
+      '<td style="white-space:nowrap">' +
+        '<button class="audit-retry" onclick="addOpener(' + i + ')">Add to sheet</button>' +
+        ' <button class="audit-retry" onclick="dismissOpener(' + i + ')" style="color:var(--muted)">Dismiss</button>' +
+      '</td>' +
+    '</tr>';
+  }).join('');
+}
+
+
+
+
+
+async function addOpener(idx) {
+  var o = window._pendingOpeners && window._pendingOpeners[idx];
+  if (!o) return;
+  if (!scriptUrl) return alert('Connect your sheet first');
+
+  var btn = document.querySelector('#opener-row-' + idx + ' button');
+  if (btn) { btn.textContent = '...'; btn.disabled = true; }
+
+  var params = new URLSearchParams({
+    action:  'addShow',
+    date:    o.date,
+    artist:  o.opener,
+    venue:   o.venue,
+    city:    o.city,
+    state:   o.state,
+    country: o.country,
+    notes:   'Support for ' + o.headliner,
+  });
+
+  try {
+    var resp = await fetch(scriptUrl + '?' + params.toString(), { redirect: 'follow' });
+    var data = await resp.json();
+    if (data.error) throw new Error(data.error);
+
+    // Add to local concerts
+    concerts.push({
+      date:    o.date,
+      artist:  o.opener,
+      venue:   o.venue,
+      city:    o.city,
+      state:   o.state,
+      country: o.country,
+      notes:   'Support for ' + o.headliner,
+    });
+
+    // Remove row
+    var row = document.getElementById('opener-row-' + idx);
+    if (row) {
+      row.style.opacity = '0.4';
+      row.style.textDecoration = 'line-through';
+      var btns = row.querySelectorAll('button');
+      btns.forEach(function(b) { b.style.display = 'none'; });
+    }
+    var added = document.createElement('span');
+    added.style.cssText = 'font-size:11px;color:var(--green)';
+    added.textContent = '\u2713 Added';
+    if (row) row.cells[4].appendChild(added);
+
+    processData();
+
+  } catch(e) {
+    if (btn) { btn.textContent = 'Error: ' + e.message; btn.disabled = false; }
+  }
+}
+
+function dismissOpener(idx) {
+  var row = document.getElementById('opener-row-' + idx);
+  if (row) row.remove();
+  // Mark as existing so it won't re-appear
+  var o = window._pendingOpeners && window._pendingOpeners[idx];
+  if (o) {
+    if (!window._dismissedOpeners) window._dismissedOpeners = {};
+    window._dismissedOpeners[o.date + '|||' + o.opener] = true;
+  }
+  var remaining = document.querySelectorAll('#openers-tbody tr').length;
+  document.getElementById('openers-count').textContent = remaining + ' opener' + (remaining !== 1 ? 's' : '') + ' found';
+}
+
+async function addAllOpeners() {
+  var openers = window._pendingOpeners || [];
+  if (!openers.length) return;
+  if (!scriptUrl) return alert('Connect your sheet first');
+  if (!confirm('Add all ' + openers.length + ' openers to your sheet?')) return;
+
+  for (var i = 0; i < openers.length; i++) {
+    var row = document.getElementById('opener-row-' + i);
+    if (!row || row.style.textDecoration === 'line-through') continue;
+    await addOpener(i);
+    await new Promise(function(r) { setTimeout(r, 200); });
+  }
+}
+
+
+
+function setAuditFilter(filter) {
+  document.getElementById('audit-filter').value = filter;
+  // Update active button states
+  ['all','ok','empty','missing'].forEach(function(f) {
+    var btn = document.getElementById('afbtn-' + f);
+    if (btn) btn.classList.toggle('active', f === filter);
+  });
+  renderAudit();
+}
+
+
+</script>
+</body>
+</html>
