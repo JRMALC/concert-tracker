@@ -548,6 +548,8 @@
 
 
 
+
+
 // ─── State ───────────────────────────────────────────────────────────────────
 let concerts = [];
 let setlistCache = {};
@@ -2231,6 +2233,7 @@ function renderAudit() {
       : '';
     var retryBtn = '<button class="audit-retry" onclick="showOverride(' + r.idx + ', this)" style="margin-right:4px">' +
       (r.status !== 'ok' ? 'Retry' : 'Fix') + '</button>';
+    var deleteBtn = '<button class="audit-retry" onclick="deleteAuditRow(' + r.idx + ', this)" style="color:var(--coral);border-color:rgba(248,113,113,0.3)">× Delete</button>';
 
     return '<tr id="audit-row-' + r.idx + '">' +
       '<td><span class="audit-badge ' + badgeClass + '">' + badgeText + '</span></td>' +
@@ -2246,7 +2249,7 @@ function renderAudit() {
         '<div style="color:var(--muted)">' + (r.artist || '') + '</div>' +
         (r.fmArtist && r.artistMismatch ? '<div style="margin-top:2px;font-size:11px;color:var(--amber)">⇒ ' + r.fmArtist + '</div>' : '') +
       '</td>' +
-      '<td style="white-space:nowrap">' + syncBtn + retryBtn + '</td>' +
+      '<td style="white-space:nowrap">' + syncBtn + retryBtn + deleteBtn + '</td>' +
     '</tr>' +
     '<tr class="audit-override-row" id="override-row-' + r.idx + '" style="display:none">' +
       '<td colspan="6" style="padding:8px 12px;background:var(--bg3)">' +
@@ -2731,6 +2734,44 @@ async function syncFromFM(idx, btn) {
 }
 
 
+
+
+
+
+// ─── Delete concert row ───────────────────────────────────────────────────────
+async function deleteAuditRow(idx, btn) {
+  if (!scriptUrl) return alert('Connect your sheet first');
+  var c = concerts[idx];
+  if (!c) return;
+
+  if (!confirm('Delete "' + c.artist + '" on ' + c.date + ' from your sheet?\nThis cannot be undone.')) return;
+
+  if (btn) { btn.textContent = '...'; btn.disabled = true; }
+
+  try {
+    var params = new URLSearchParams({
+      action: 'deleteShow',
+      date:   c.date,
+      artist: c.artist,
+    });
+    var resp = await fetch(scriptUrl + '?' + params.toString(), { redirect: 'follow' });
+    var data = await resp.json();
+    if (data.error) throw new Error(data.error);
+
+    // Remove from local concerts array
+    concerts.splice(idx, 1);
+    // Remove from setlist cache
+    delete setlistCache[getCacheKey(c, idx)];
+
+    // Re-render
+    processData();
+    renderAudit();
+
+  } catch(e) {
+    if (btn) { btn.textContent = '× Delete'; btn.disabled = false; }
+    alert('Error: ' + e.message);
+  }
+}
 
 </script>
 </body>
