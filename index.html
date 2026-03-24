@@ -547,6 +547,7 @@
 <script>
 
 
+
 // ─── State ───────────────────────────────────────────────────────────────────
 let concerts = [];
 let setlistCache = {};
@@ -2025,6 +2026,15 @@ async function addShowToSheet() {
   if (!date)   return setStatus('add-status','err','Date is required');
   if (!artist) return setStatus('add-status','err','Artist is required');
 
+  // Check for duplicate — same artist on same date already in concerts array
+  var isDupe = concerts.some(function(c) {
+    return c.date === date && c.artist.toLowerCase().trim() === artist.toLowerCase().trim();
+  });
+  if (isDupe) {
+    return setStatus('add-status','err',
+      artist + ' on ' + date + ' is already in your sheet.');
+  }
+
   setStatus('add-status','loading','Adding to sheet...');
 
   const params = new URLSearchParams({
@@ -2719,6 +2729,7 @@ async function syncFromFM(idx, btn) {
     alert('Error updating sheet: ' + e.message);
   }
 }
+
 
 
 </script>
