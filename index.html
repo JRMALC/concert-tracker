@@ -329,7 +329,7 @@
         <div id="artist-filter-wrap" class="artist-filter"></div>
         <div class="panel">
           <table class="lb-table" id="songs-table">
-            <thead><tr><th>#</th><th>Song</th><th>Artist</th><th>Times heard</th><th></th></tr></thead>
+            <thead><tr><th>#</th><th>Song</th><th>Artist</th><th>Times heard</th><th>Last heard</th><th></th></tr></thead>
             <tbody id="songs-tbody"></tbody>
           </table>
         </div>
@@ -529,22 +529,12 @@
       </div>
       <button class="modal-close" onclick="closeModal()">×</button>
     </div>
- 
-
-
-
-
-
-
-
-
-
-
-
-
-
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
 
 <script>
+
 
 
 
@@ -855,14 +845,14 @@ function getSongStats(filterArtist = null) {
   concerts.forEach((c, i) => {
     const sl = setlistCache[getCacheKey(c, i)];
     if (!sl) return;
-    // Use the display artist name (setlist.fm canonical if available)
     const artist = getDisplayArtist(c, i);
     const all = [...(sl.songs||[]), ...(sl.encores||[])];
     all.forEach(song => {
       if (!song.name) return;
       const key = song.name + '|||' + artist;
-      if (!map[key]) map[key] = { name: song.name, artist: artist, count: 0 };
+      if (!map[key]) map[key] = { name: song.name, artist: artist, count: 0, lastDate: '' };
       map[key].count++;
+      if (!map[key].lastDate || c.date > map[key].lastDate) map[key].lastDate = c.date;
     });
   });
   let entries = Object.entries(map).sort((a,b) => b[1].count - a[1].count);
@@ -1256,7 +1246,7 @@ function renderSongs() {
   const max = stats[0][1].count || 1;
   // Store song lookup for click handlers
   window._songIndex = stats.map(function(entry) {
-    return { name: entry[1].name, artist: entry[1].artist };
+    return { name: entry[1].name, artist: entry[1].artist, lastDate: entry[1].lastDate };
   });
   document.getElementById('songs-tbody').innerHTML = stats.map(function(entry, i) {
     const data = entry[1];
@@ -1265,6 +1255,7 @@ function renderSongs() {
       '<td style="font-weight:500">' + data.name + '</td>' +
       '<td style="color:var(--muted);font-size:12px">' + data.artist + '</td>' +
       '<td><div class="bar-wrap"><div class="bar"><div class="bar-fill" style="width:' + Math.round(data.count/max*100) + '%"></div></div><span class="count-badge song-times">' + data.count + '×</span></div></td>' +
+      '<td style="font-family:var(--mono);font-size:11px;color:var(--muted)">' + (data.lastDate ? formatDate(data.lastDate) : '') + '</td>' +
       '<td style="color:var(--muted);font-size:11px">▸ history</td></tr>';
   }).join('');
 }
@@ -2788,6 +2779,7 @@ async function deleteAuditRow(idx, btn) {
     alert('Error: ' + e.message);
   }
 }
+
 
 
 
