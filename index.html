@@ -550,6 +550,7 @@
 
 
 
+
 // ─── State ───────────────────────────────────────────────────────────────────
 let concerts = [];
 let setlistCache = {};
@@ -2700,15 +2701,15 @@ async function syncFromFM(idx, btn) {
 
   try {
     var params = new URLSearchParams({
-      action:  'updateShow',
-      rowIdx:  idx,
-      date:    c.date,
-      artist:  updates.artist  || c.artist,
-      venue:   updates.venue   || c.venue,
-      city:    updates.city    || c.city,
-      state:   c.state   || '',
-      country: updates.country || c.country,
-      notes:   c.notes   || '',
+      action:     'updateShow',
+      date:       c.date,
+      origArtist: c.artist,          // original sheet artist — used to find the exact row
+      artist:     updates.artist  || c.artist,
+      venue:      updates.venue   || c.venue,
+      city:       updates.city    || c.city,
+      state:      c.state   || '',
+      country:    updates.country || c.country,
+      notes:      c.notes   || '',
     });
 
     var resp = await fetch(scriptUrl + '?' + params.toString(), { redirect: 'follow' });
@@ -2772,6 +2773,7 @@ async function deleteAuditRow(idx, btn) {
     alert('Error: ' + e.message);
   }
 }
+
 
 </script>
 </body>
