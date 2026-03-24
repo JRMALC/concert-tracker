@@ -236,14 +236,14 @@
   <header>
     <div class="logo"><div class="logo-dot"></div> Concert Tracker</div>
     <nav>
-      <button class="nav-btn" onclick="switchView('map')">Map</button>
+      <button class="nav-btn active" onclick="switchView('map')">Map</button>
       <button class="nav-btn" onclick="switchView('concerts')">Shows</button>
       <button class="nav-btn" onclick="switchView('artists')">Artists</button>
       <button class="nav-btn" onclick="switchView('venues')">Venues</button>
       <button class="nav-btn" onclick="switchView('songs')">Songs</button>
       <button class="nav-btn" onclick="switchView('years')">Years</button>
       <button class="nav-btn" onclick="switchView('audit')">Audit</button>
-      <button class="nav-btn active" onclick="switchView('add')">Add a Show</button>
+      <button class="nav-btn" onclick="switchView('add')">Add a Show</button>
     </nav>
     <div class="header-right">
       <span class="badge" id="total-badge">0 shows</span>
@@ -445,7 +445,7 @@
       </div>
 
 <!-- HOME VIEW -->
-      <div class="view active" id="view-add">
+      <div class="view" id="view-add">
         <div style="max-width:640px;margin:0 auto;display:flex;flex-direction:column;gap:1.5rem">
 
           <!-- Connection -->
@@ -534,6 +534,7 @@
 </div>
 
 <script>
+
 
 
 
@@ -1062,9 +1063,7 @@ function drawDots() {
       })
       .on('click', function(event) {
         event.stopPropagation();
-        switchView('concerts');
-        document.getElementById('concert-search').value = city;
-        renderConcerts();
+        switchToCity(city);
       });
   });
 
@@ -1080,7 +1079,7 @@ function renderCitiesTable() {
   const stats = getCityStats();
   const max = stats[0]?.[1] || 1;
   document.getElementById('cities-tbody').innerHTML = stats.map(([city,count],i) => `
-    <tr onclick="switchView('concerts');document.getElementById('concert-search').value='${city}';renderConcerts()">
+    <tr onclick="switchToCity('${city}')">
       <td class="rank ${i<3?'rank-'+(i+1):''}">${i+1}</td>
       <td>${city}</td>
       <td><div class="bar-wrap"><div class="bar"><div class="bar-fill" style="width:${count/max*100}%"></div></div><span class="count-badge">${count}</span></div></td>
@@ -1209,7 +1208,7 @@ function renderVenues() {
   const stats = getVenueStats().filter(([,v]) => !q || v.venue.toLowerCase().includes(q) || v.city.toLowerCase().includes(q));
   const max = stats[0]?.[1].count || 1;
   document.getElementById('venues-tbody').innerHTML = stats.map(([,data],i) => `
-    <tr onclick="switchView('concerts');document.getElementById('concert-search').value='${data.venue}';renderConcerts()">
+    <tr onclick="switchToCity('${data.venue}')">
       <td class="rank ${i<3?'rank-'+(i+1):''}">${i+1}</td>
       <td style="font-weight:500">${data.venue}</td>
       <td style="color:var(--muted);font-size:12px">${data.city}</td>
@@ -1872,21 +1871,9 @@ function renderYearData(year) {
 function esc(s) { return encodeURIComponent(s || ''); }
 
 // Navigation helpers used by year table rows
-function filterByArtist(name) {
-  switchView('concerts');
-  document.getElementById('concert-artist-filter').value = decodeURIComponent(name);
-  renderConcerts();
-}
-function filterByVenue(name) {
-  switchView('concerts');
-  document.getElementById('concert-search').value = decodeURIComponent(name);
-  renderConcerts();
-}
-function filterByCity(name) {
-  switchView('concerts');
-  document.getElementById('concert-search').value = decodeURIComponent(name);
-  renderConcerts();
-}
+function filterByArtist(name) { switchToArtist(decodeURIComponent(name)); }
+function filterByVenue(name) { switchToVenue(decodeURIComponent(name)); }
+function filterByCity(name) { switchToCity(decodeURIComponent(name)); }
 
 
 
@@ -1966,9 +1953,39 @@ function switchView(id) {
     var btnId = b.getAttribute('onclick').match(/switchView\('([^']+)'\)/);
     b.classList.toggle('active', btnId && btnId[1] === id);
   });
+  // Clear all filters when switching tabs so stale state doesn't bleed across
+  clearAllFilters();
   if (id === 'years') renderYearsView();
   if (id === 'audit') renderAudit();
   if (id === 'map') { drawDots(); }
+}
+
+function clearAllFilters() {
+  // Concert search + filters
+  var cs = document.getElementById('concert-search');
+  var cy = document.getElementById('concert-year');
+  var ca = document.getElementById('concert-artist-filter');
+  if (cs) cs.value = '';
+  if (cy) cy.value = '';
+  if (ca) ca.value = '';
+  // Artist / venue / song searches
+  var as = document.getElementById('artist-search');
+  var vs = document.getElementById('venue-search');
+  var ss = document.getElementById('song-search');
+  var aus = document.getElementById('audit-search');
+  if (as)  as.value = '';
+  if (vs)  vs.value = '';
+  if (ss)  ss.value = '';
+  if (aus) aus.value = '';
+  // Song artist filter
+  songArtistFilter = null;
+  // Audit filter back to all
+  var af = document.getElementById('audit-filter');
+  if (af) af.value = 'all';
+  ['all','ok','empty','missing'].forEach(function(f) {
+    var btn = document.getElementById('afbtn-' + f);
+    if (btn) btn.classList.toggle('active', f === 'all');
+  });
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -2575,6 +2592,32 @@ function setAuditFilter(filter) {
   renderAudit();
 }
 
+
+
+// ─── Filtered navigation helpers ──────────────────────────────────────────────
+// These clear everything first, then apply exactly one filter, preventing
+// cross-tab filter bleed
+
+function switchToCity(city) {
+  switchView('concerts');        // clears all filters
+  var el = document.getElementById('concert-search');
+  if (el) el.value = city;
+  renderConcerts();
+}
+
+function switchToArtist(artist) {
+  switchView('concerts');        // clears all filters
+  var el = document.getElementById('concert-artist-filter');
+  if (el) el.value = artist;
+  renderConcerts();
+}
+
+function switchToVenue(venue) {
+  switchView('concerts');        // clears all filters
+  var el = document.getElementById('concert-search');
+  if (el) el.value = venue;
+  renderConcerts();
+}
 
 </script>
 </body>
