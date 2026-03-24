@@ -551,6 +551,9 @@
 
 
 
+
+
+
 // ─── State ───────────────────────────────────────────────────────────────────
 let concerts = [];
 let setlistCache = {};
@@ -1251,11 +1254,13 @@ function renderSongs() {
     return;
   }
   const max = stats[0][1].count || 1;
+  // Store song lookup for click handlers
+  window._songIndex = stats.map(function(entry) {
+    return { name: entry[1].name, artist: entry[1].artist };
+  });
   document.getElementById('songs-tbody').innerHTML = stats.map(function(entry, i) {
     const data = entry[1];
-    const safeN = encodeURIComponent(data.name);
-    const safeA = encodeURIComponent(data.artist);
-    return '<tr style="cursor:pointer" onclick="openSongHistory(decodeURIComponent(\'' + safeN + '\'), decodeURIComponent(\'' + safeA + '\'))">' +
+    return '<tr style="cursor:pointer" onclick="openSongHistory(window._songIndex[' + i + '].name, window._songIndex[' + i + '].artist)">' +
       '<td class="rank">' + (i+1) + '</td>' +
       '<td style="font-weight:500">' + data.name + '</td>' +
       '<td style="color:var(--muted);font-size:12px">' + data.artist + '</td>' +
@@ -2222,44 +2227,49 @@ function renderAudit() {
     return;
   }
 
-  document.getElementById('audit-tbody').innerHTML = filtered.map(function(r) {
+  // Store audit rows in index for safe button callbacks
+  window._auditIndex = filtered;
+
+  document.getElementById('audit-tbody').innerHTML = filtered.map(function(r, fi) {
     var badgeClass = r.status === 'ok' ? 'audit-ok' :
                      r.status === 'empty' ? 'audit-empty' : 'audit-missing';
     var badgeText  = r.status === 'ok'      ? r.songs + ' songs' :
                      r.status === 'empty'   ? 'no songs' : 'no setlist';
 
+    // Escape HTML special chars for safe display only — never in onclick
+    function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
     var hasMismatch = r.venueMismatch || r.cityMismatch || r.artistMismatch;
     var syncBtn = hasMismatch
-      ? '<button class="audit-retry" onclick="syncFromFM(' + r.idx + ', this)" style="margin-right:4px;color:var(--amber);border-color:rgba(251,191,36,0.4)">⇒ Use setlist.fm</button>'
+      ? '<button class="audit-retry" onclick="syncFromFM(' + fi + ', this)" style="margin-right:4px;color:var(--amber);border-color:rgba(251,191,36,0.4)">⇒ Use setlist.fm</button>'
       : '';
-    var retryBtn = '<button class="audit-retry" onclick="showOverride(' + r.idx + ', this)" style="margin-right:4px">' +
+    var retryBtn = '<button class="audit-retry" onclick="showOverride(' + fi + ', this)" style="margin-right:4px">' +
       (r.status !== 'ok' ? 'Retry' : 'Fix') + '</button>';
-    var deleteBtn = '<button class="audit-retry" onclick="deleteAuditRow(' + r.idx + ', this)" style="color:var(--coral);border-color:rgba(248,113,113,0.3)">× Delete</button>';
 
-    return '<tr id="audit-row-' + r.idx + '">' +
+    return '<tr id="audit-row-' + fi + '">' +
       '<td><span class="audit-badge ' + badgeClass + '">' + badgeText + '</span></td>' +
       '<td style="font-family:var(--mono);font-size:11px">' + r.date + '</td>' +
-      '<td style="font-weight:500">' + r.artist + '</td>' +
+      '<td style="font-weight:500">' + esc(r.artist) + '</td>' +
       '<td style="font-size:12px">' +
-        '<div style="color:var(--muted)">' + (r.venue || '—') + (r.city ? ' · ' + r.city : '') + '</div>' +
+        '<div style="color:var(--muted)">' + esc(r.venue || '—') + (r.city ? ' · ' + esc(r.city) : '') + '</div>' +
         (r.fmVenue || r.fmCity ? '<div style="margin-top:2px;font-size:11px;' + ((r.venueMismatch || r.cityMismatch) ? 'color:var(--amber)' : 'color:var(--green)') + '">' +
-          '⇒ ' + (r.fmVenue || r.venue) + (r.fmCity ? ' · ' + r.fmCity : '') +
+          '⇒ ' + esc(r.fmVenue || r.venue) + (r.fmCity ? ' · ' + esc(r.fmCity) : '') +
         '</div>' : '') +
       '</td>' +
       '<td style="font-size:12px">' +
-        '<div style="color:var(--muted)">' + (r.artist || '') + '</div>' +
-        (r.fmArtist && r.artistMismatch ? '<div style="margin-top:2px;font-size:11px;color:var(--amber)">⇒ ' + r.fmArtist + '</div>' : '') +
+        '<div style="color:var(--muted)">' + esc(r.artist) + '</div>' +
+        (r.fmArtist && r.artistMismatch ? '<div style="margin-top:2px;font-size:11px;color:var(--amber)">⇒ ' + esc(r.fmArtist) + '</div>' : '') +
       '</td>' +
-      '<td style="white-space:nowrap">' + syncBtn + retryBtn + deleteBtn + '</td>' +
+      '<td style="white-space:nowrap">' + syncBtn + retryBtn + '</td>' +
     '</tr>' +
-    '<tr class="audit-override-row" id="override-row-' + r.idx + '" style="display:none">' +
+    '<tr class="audit-override-row" id="override-row-' + fi + '" style="display:none">' +
       '<td colspan="6" style="padding:8px 12px;background:var(--bg3)">' +
         '<div style="display:flex;gap:8px;align-items:center">' +
-          '<input class="inp" id="override-url-' + r.idx + '" placeholder="Paste setlist.fm URL — e.g. https://www.setlist.fm/setlist/grateful-dead/1977/..." style="flex:1;font-size:11px;height:30px">' +
-          '<button class="audit-retry" onclick="applyOverride(' + r.idx + ')">Apply</button>' +
-          '<button class="audit-retry" onclick="hideOverride(' + r.idx + ')">Cancel</button>' +
+          '<input class="inp" id="override-url-' + fi + '" placeholder="Paste setlist.fm URL — e.g. https://www.setlist.fm/setlist/grateful-dead/1977/..." style="flex:1;font-size:11px;height:30px">' +
+          '<button class="audit-retry" onclick="applyOverride(' + fi + ')">Apply</button>' +
+          '<button class="audit-retry" onclick="hideOverride(' + fi + ')">Cancel</button>' +
         '</div>' +
-        '<div id="override-status-' + r.idx + '" style="font-size:11px;margin-top:4px;color:var(--muted)">Find the correct show on setlist.fm, copy its URL, and paste it here.</div>' +
+        '<div id="override-status-' + fi + '" style="font-size:11px;margin-top:4px;color:var(--muted)">Find the correct show on setlist.fm, copy its URL, and paste it here.</div>' +
       '</td>' +
     '</tr>';
   }).join('');
@@ -2333,25 +2343,27 @@ async function reloadSetlistCache() {
 
 
 // ─── Setlist Override ─────────────────────────────────────────────────────────
-function showOverride(idx, btn) {
+function showOverride(fi, btn) {
   // Hide any other open override rows first
   document.querySelectorAll('.audit-override-row').forEach(function(r) {
     r.style.display = 'none';
   });
-  var row = document.getElementById('override-row-' + idx);
+  var row = document.getElementById('override-row-' + fi);
   if (row) row.style.display = '';
-  var input = document.getElementById('override-url-' + idx);
+  var input = document.getElementById('override-url-' + fi);
   if (input) input.focus();
 }
 
-function hideOverride(idx) {
-  var row = document.getElementById('override-row-' + idx);
+function hideOverride(fi) {
+  var row = document.getElementById('override-row-' + fi);
   if (row) row.style.display = 'none';
 }
 
-async function applyOverride(idx) {
-  var input  = document.getElementById('override-url-' + idx);
-  var status = document.getElementById('override-status-' + idx);
+async function applyOverride(fi) {
+  var r      = (window._auditIndex && window._auditIndex[fi]) ? window._auditIndex[fi] : null;
+  var idx    = r ? r.idx : fi;
+  var input  = document.getElementById('override-url-' + fi);
+  var status = document.getElementById('override-status-' + fi);
   var url    = (input ? input.value : '').trim();
 
   if (!url) { if (status) status.textContent = 'Please paste a setlist.fm URL.'; return; }
@@ -2393,7 +2405,7 @@ async function applyOverride(idx) {
     renderAudit();
     renderSongs();
     renderConcerts();
-    hideOverride(idx);
+    hideOverride(fi);
 
     if (status) status.textContent = 'Done — ' + (data.songs || 0) + ' songs loaded.';
 
@@ -2673,8 +2685,11 @@ function switchToVenue(venue) {
 
 
 // ─── Sync concert data from setlist.fm ───────────────────────────────────────
-async function syncFromFM(idx, btn) {
+async function syncFromFM(fi, btn) {
   if (!scriptUrl) return alert('Connect your sheet first');
+  var r  = (window._auditIndex && window._auditIndex[fi]) ? window._auditIndex[fi] : null;
+  if (!r) return;
+  var idx = r.idx;
   var c  = concerts[idx];
   var sl = setlistCache[getCacheKey(c, idx)];
   if (!sl) return;
@@ -2773,6 +2788,9 @@ async function deleteAuditRow(idx, btn) {
     alert('Error: ' + e.message);
   }
 }
+
+
+
 
 
 </script>
