@@ -546,6 +546,7 @@
 
 
 
+
 // ─── State ───────────────────────────────────────────────────────────────────
 let concerts = [];
 let setlistCache = {};
@@ -2365,19 +2366,18 @@ async function applyOverride(idx) {
 
 // ─── Song History Modal ───────────────────────────────────────────────────────
 function openSongHistory(songName, artist) {
-  // Collect every concert where this song appears
   var appearances = [];
 
   concerts.forEach(function(c, i) {
     var sl = setlistCache[getCacheKey(c, i)];
     if (!sl) return;
     var all = (sl.songs || []).concat(sl.encores || []);
-    var inSet    = false;
-    var isEncore = false;
+    var inSet = false, isEncore = false, isCover = false;
     for (var j = 0; j < all.length; j++) {
       if (all[j].name && all[j].name.toLowerCase() === songName.toLowerCase()) {
-        inSet = true;
+        inSet    = true;
         isEncore = j >= (sl.songs || []).length;
+        isCover  = !!all[j].cover; // setlist.fm flags covers with original artist
         break;
       }
     }
@@ -2388,17 +2388,21 @@ function openSongHistory(songName, artist) {
       venue:   getDisplayVenue(c, i),
       city:    getDisplayCity(c, i),
       encore:  isEncore,
+      cover:   isCover,
       idx:     i,
     });
   });
 
-  // Sort by date descending
   appearances.sort(function(a, b) { return b.date.localeCompare(a.date); });
 
-  // Build modal content
+  // Check if multiple artists performed this song
+  var uniqueArtists = [...new Set(appearances.map(function(a) { return a.artist; }))];
+  var multiArtist   = uniqueArtists.length > 1;
+
   document.getElementById('modal-title').textContent = songName;
   document.getElementById('modal-sub').textContent =
-    artist + ' \u00b7 ' + appearances.length + ' time' + (appearances.length !== 1 ? 's' : '') + ' heard live';
+    appearances.length + ' performance' + (appearances.length !== 1 ? 's' : '') +
+    (multiArtist ? ' · ' + uniqueArtists.length + ' artists' : ' · ' + artist);
   document.getElementById('modal').classList.add('open');
 
   if (!appearances.length) {
@@ -2411,12 +2415,15 @@ function openSongHistory(songName, artist) {
     return '<div class="song-row" style="cursor:pointer" onclick="closeModal();openConcert(' + a.idx + ')">' +
       '<span class="song-num">' + (i+1) + '</span>' +
       '<div style="flex:1">' +
-        '<div style="font-size:13px;font-weight:500">' + formatDate(a.date) + '</div>' +
+        '<div style="font-size:13px;font-weight:500">' + a.artist + '</div>' +
         '<div style="font-size:11px;color:var(--muted);margin-top:2px">' +
-          a.venue + (a.city ? ' \u00b7 ' + a.city : '') +
+          formatDate(a.date) +
+          (a.venue ? ' · ' + a.venue : '') +
+          (a.city  ? ' · ' + a.city  : '') +
         '</div>' +
       '</div>' +
-      (a.encore ? '<span style="font-size:10px;background:var(--amber-dim);color:var(--amber);border-radius:99px;padding:1px 7px">encore</span>' : '') +
+      (a.cover  ? '<span style="font-size:10px;background:var(--blue-dim);color:var(--blue);border-radius:99px;padding:1px 7px;margin-left:4px">cover</span>' : '') +
+      (a.encore ? '<span style="font-size:10px;background:var(--amber-dim);color:var(--amber);border-radius:99px;padding:1px 7px;margin-left:4px">encore</span>' : '') +
     '</div>';
   }).join('');
 
@@ -2618,6 +2625,7 @@ function switchToVenue(venue) {
   if (el) el.value = venue;
   renderConcerts();
 }
+
 
 </script>
 </body>
