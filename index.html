@@ -493,6 +493,10 @@
             <div class="sidebar-label" style="margin-bottom:6px">Sync setlists</div>
             <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Fetch setlists for any new shows and reload everything from your sheet. Run this after adding new shows.</div>
             <button class="btn btn-ghost" id="sync-btn" onclick="syncAll()">Sync Setlists + Reload</button>
+            <div style="margin-top:8px">
+              <button class="btn btn-ghost" style="font-size:12px;color:var(--muted)" onclick="rekeySetlists()">Fix artist name mismatches</button>
+              <div style="font-size:11px;color:var(--muted);margin-top:4px">Run after correcting artist names in your sheet — re-links cached setlists to the updated names.</div>
+            </div>
             <div class="status" id="sync-status" style="margin-top:8px"></div>
           </div>
 
@@ -2784,6 +2788,30 @@ async function deleteAuditRow(idx, btn) {
 
 
 
+
+
+// ─── Re-key setlists after artist name corrections ────────────────────────────
+async function rekeySetlists() {
+  if (!scriptUrl) return alert('Connect your sheet first');
+  const btn = event.target;
+  btn.textContent = 'Fixing...';
+  btn.disabled = true;
+  try {
+    const resp = await fetch(scriptUrl + '?action=rekeySetlists', { redirect: 'follow' });
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error);
+    btn.textContent = 'Fix artist name mismatches';
+    btn.disabled = false;
+    const msg = 'Fixed ' + (data.rekeyed || 0) + ' of ' + (data.checked || 0) + ' setlist keys. Reloading...';
+    setStatus('sync-status', 'loading', msg);
+    await fetchFromScript(scriptUrl);
+    setStatus('sync-status', 'ok', 'Done — ' + (data.rekeyed || 0) + ' keys updated.');
+  } catch(e) {
+    btn.textContent = 'Fix artist name mismatches';
+    btn.disabled = false;
+    setStatus('sync-status', 'err', e.message);
+  }
+}
 
 </script>
 </body>
